@@ -48,6 +48,9 @@ dependencies {
 
     // p6spy
     implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:2.0.1'
+
+    // Argon2
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
 }
 
 tasks.named('test') {
