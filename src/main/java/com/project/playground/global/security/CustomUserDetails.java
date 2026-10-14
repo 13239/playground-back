@@ -1,6 +1,7 @@
 package com.project.playground.global.security;
 
 import com.project.playground.domain.user.entity.User;
+import com.project.playground.domain.user.enums.UserStatus;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,7 +24,7 @@ public class CustomUserDetails implements UserDetails {
         this.id = user.getId();
         this.username = user.getUsername();
         this.password = user.getPassword();
-        this.enabled = user.getDeletedAt() == null;
+        this.enabled = user.getDeletedAt() == null && user.getStatus() == UserStatus.ACTIVE;
     }
 
     @Override

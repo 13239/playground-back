@@ -5,13 +5,14 @@ import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.repository.RefreshTokenRepository;
 import com.project.playground.domain.user.entity.User;
-import com.project.playground.domain.user.repository.UserRepository;
+import com.project.playground.domain.user.repository.reader.UserReader;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import com.project.playground.global.security.CustomUserDetails;
 import com.project.playground.global.security.jwt.JwtProperties;
 import com.project.playground.global.security.jwt.JwtTokenService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -34,21 +35,20 @@ public class AuthService {
 
     private final JwtProperties jwtProperties;
 
-    private final UserRepository userRepository;
+    private final UserReader userReader;
 
     public LoginResponse login(LoginRequest request) {
         Authentication authentication;
 
         try {
             authentication = authenticate(request);
-        } catch (BadCredentialsException e) {
+        } catch (BadCredentialsException | AccountStatusException e) {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
         CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
 
         Jwt accessToken = jwtTokenService.createAccessToken(user.getId());
-
         String refreshToken = jwtTokenService.createRefreshToken();
 
         refreshTokenRepository.save(user.getId(), refreshToken, jwtProperties.refreshTokenTtl());
@@ -66,7 +66,7 @@ public class AuthService {
     public LoginResponse refresh(RefreshRequest request) {
         Long id = refreshTokenRepository.consume(request.getRefreshToken()).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
-        User user = userRepository.findByIdAndDeletedAtIsNull(id).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
+        User user = userReader.findActiveById(id).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
         Jwt accessToken = jwtTokenService.createAccessToken(user.getId());
         String refreshToken = jwtTokenService.createRefreshToken();
