@@ -1,6 +1,5 @@
 package com.project.playground.global.config;
 
-import com.project.playground.global.security.jwt.JwtAccountStatusValidator;
 import com.project.playground.global.security.jwt.JwtProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -42,7 +41,7 @@ public class JwtConfig {
 
     // 발급할 때와 같은 비밀키로 JWT를 검증
     @Bean
-    public JwtDecoder jwtDecoder(SecretKey jwtSecretKey, JwtProperties properties, JwtAccountStatusValidator accountStatusValidator) {
+    public JwtDecoder jwtDecoder(SecretKey jwtSecretKey, JwtProperties properties) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder
                 .withSecretKey(jwtSecretKey)
                 .macAlgorithm(MacAlgorithm.HS256)
@@ -52,8 +51,7 @@ public class JwtConfig {
         decoder.setJwtValidator(
                 new DelegatingOAuth2TokenValidator<>(
                         JwtValidators.createDefaultWithIssuer(properties.issuer()), // 만료 시간 등 기본 검증 + 발급자(iss) 검증
-                        new JwtAudienceValidator(properties.audience()), // 이 API를 대상으로 발급된 토큰인지 검증(aud)
-                        accountStatusValidator // DB에서 회원의 활성 상태 및 탈퇴 여부 검증
+                        new JwtAudienceValidator(properties.audience()) // 이 API를 대상으로 발급된 토큰인지 검증(aud)
                 )
         );
 

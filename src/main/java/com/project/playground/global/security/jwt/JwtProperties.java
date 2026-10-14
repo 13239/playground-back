@@ -23,10 +23,6 @@ public record JwtProperties(
 
         @NotNull
         @DurationMin(seconds = 1)
-        Duration accessTokenTtl,
-
-        @NotNull
-        @DurationMin(seconds = 1)
-        Duration refreshTokenTtl
+        Duration accessTokenTtl
 ) {
 }

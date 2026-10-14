@@ -1,16 +1,18 @@
 package com.project.playground.auth.controller;
 
 import com.project.playground.auth.dto.request.LoginRequest;
+import com.project.playground.auth.dto.request.LogoutRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.CurrentUserResponse;
 import com.project.playground.auth.dto.response.LoginResponse;
+import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.service.AuthService;
+import com.project.playground.global.security.session.Session;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -38,12 +40,25 @@ public class AuthController {
                 .body(response);
     }
 
-    @GetMapping("/me")
-    public ResponseEntity<CurrentUserResponse> me(@AuthenticationPrincipal Jwt jwt) {
-        CurrentUserResponse response = CurrentUserResponse.builder()
-                .id(Long.valueOf(jwt.getSubject()))
-                .build();
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
+        authService.logout(request);
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore()) // 요청, 응답을 HTTP 캐시에 저장하지 않음을 명시
+                .build();
+    }
+
+    // 실제 사용자 활동 시 세션 만료 시간 연장
+    @PostMapping("/activity")
+    public ResponseEntity<SessionActivityResponse> activity(@AuthenticationPrincipal Session session) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(authService.activity(session));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<CurrentUserResponse> me() {
+        return ResponseEntity.ok(null);
     }
 }

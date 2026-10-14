@@ -5,9 +5,7 @@ import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,15 +13,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class JwtTokenService {
 
-    private static final int REFRESH_TOKEN_BYTE_LENGTH = 32;
-
-    private final SecureRandom secureRandom = new SecureRandom();
-
     private final JwtEncoder jwtEncoder;
 
     private final JwtProperties jwtProperties;
 
-    public Jwt createAccessToken(Long id) {
+    // 사용자와 로그인 세션이 연결된 JWT 발급
+    public Jwt createAccessToken(Long id, UUID sessionId) {
         Instant now = Instant.now();
 
         // 서명 알고리즘과 토큰 형식을 지정
@@ -37,6 +32,7 @@ public class JwtTokenService {
                 .audience(List.of(jwtProperties.audience())) // 대상 API
                 .subject(id.toString()) // 사용자 PK
                 .id(UUID.randomUUID().toString()) // 토큰 고유 ID
+                .claim("sid", sessionId.toString())
                 .issuedAt(now) // 발급 시간
                 .notBefore(now) // 사용 시작 시간
                 .expiresAt(now.plus(jwtProperties.accessTokenTtl())) // 만료 시간
@@ -44,14 +40,5 @@ public class JwtTokenService {
 
         // 헤더와 클레임을 비밀키로 서명해 JWT 발급
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims));
-    }
-
-    public String createRefreshToken() {
-        byte[] bytes = new byte[REFRESH_TOKEN_BYTE_LENGTH];
-        secureRandom.nextBytes(bytes);
-
-        return Base64.getUrlEncoder()
-                .withoutPadding()
-                .encodeToString(bytes);
     }
 }
