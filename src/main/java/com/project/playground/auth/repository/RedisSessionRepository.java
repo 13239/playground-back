@@ -339,8 +339,10 @@ public class RedisSessionRepository {
         return result == 1L;
     }
 
-    // 유효한 Refresh Token으로 요청했을 때만 해당 세션을 삭제한다.
-    public void deleteByRefreshToken(UUID sessionId, Long userId, String tokenHash) {
+    /**
+     * 인증된 사용자의 해당 로그인 세션을 원자적으로 삭제한다.
+     */
+    public void deleteBySessionId(UUID sessionId, Long userId) {
         Long result = redisTemplate.execute(
                 DELETE_SCRIPT,
                 List.of(
@@ -348,14 +350,12 @@ public class RedisSessionRepository {
                         buildUserSessionsKey(userId)
                 ),
                 sessionId.toString(),
-                userId.toString(),
-                tokenHash
+                userId.toString()
         );
 
-        if (result == null) {
-            throw new IllegalStateException("로그인 세션 삭제에 실패했습니다.");
+        if (result == null || (result != 0L && result != 1L)) {
+            throw new IllegalStateException("로그인 세션을 안전하게 삭제하지 못했습니다.");
         }
-
     }
 
     /**

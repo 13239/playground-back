@@ -1,7 +1,6 @@
 package com.project.playground.auth.service;
 
 import com.project.playground.auth.dto.request.LoginRequest;
-import com.project.playground.auth.dto.request.LogoutRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.dto.response.SessionActivityResponse;
@@ -130,13 +129,8 @@ public class AuthService {
     }
 
     // 로그아웃
-    public void logout(LogoutRequest request) {
-        String refreshToken = request.getRefreshToken();
-
-        UUID sessionId = jwtRefreshTokenService.extractSessionId(refreshToken);
-
-        // 이미 종료된 세션이나 차단된 계정의 로그아웃 요청은 그대로 종료한다.
-        redisSessionRepository.findBySessionId(sessionId).ifPresent(session -> redisSessionRepository.deleteByRefreshToken(sessionId, session.getId(), jwtRefreshTokenService.hash(refreshToken)));
+    public void logout(Session session) {
+        redisSessionRepository.deleteBySessionId(session.getSessionId(), session.getId());
     }
 
     // 의미 있는 사용자 활동이 발생했을 때 세션 만료 시간을 연장한다.

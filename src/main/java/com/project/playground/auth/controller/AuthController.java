@@ -1,7 +1,6 @@
 package com.project.playground.auth.controller;
 
 import com.project.playground.auth.dto.request.LoginRequest;
-import com.project.playground.auth.dto.request.LogoutRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.CurrentUserResponse;
 import com.project.playground.auth.dto.response.LoginResponse;
@@ -41,8 +40,8 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
-        authService.logout(request);
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal(errorOnInvalidType = true) Session session) {
+        authService.logout(session);
 
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore()) // 요청, 응답을 HTTP 캐시에 저장하지 않음을 명시
