@@ -2,6 +2,8 @@
 
 local sessionKey = KEYS[1]
 local userSessionsKey = KEYS[2]
+-- KEYS[3]: 사용자 계정 차단 Key
+local accountBlockedKey = KEYS[3]
 
 -- ARGV[1]: sessionId
 -- ARGV[2]: 사용자 ID
@@ -11,6 +13,12 @@ local sessionId = ARGV[1]
 local userId = ARGV[2]
 local oldHash = ARGV[3]
 local newHash = ARGV[4]
+
+-- 차단된 회원은 이미 조회한 세션이 있어도 Refresh Token을 회전할 수 없다.
+-- 세션 검증과 차단 검증을 동일한 Lua 실행에서 처리한다.
+if redis.call('EXISTS', accountBlockedKey) == 1 then
+    return 0
+end
 
 -- 해당 사용자의 세션인지 확인
 if redis.call('HGET', sessionKey, 'id') ~= userId then

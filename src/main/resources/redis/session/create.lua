@@ -1,8 +1,10 @@
 -- KEYS[1]: 새 로그인 세션 Hash Key
 -- KEYS[2]: 사용자별 세션 목록 Sorted Set Key
+-- KEYS[3]: 사용자 계정 차단 Key
 
 local sessionKey = KEYS[1]
 local userSessionsKey = KEYS[2]
+local accountBlockedKey = KEYS[3]
 
 -- ARGV[1]: sessionId
 -- ARGV[2]: 사용자 ID
@@ -11,10 +13,18 @@ local userSessionsKey = KEYS[2]
 -- ARGV[5]: 로그인 유지 여부
 -- ARGV[6]: createdAt (milliseconds)
 -- ARGV[7]: expiresAt (milliseconds)
+-- ARGV[8]: 개별 로그인 세션 Hash Key 접두사
 
 local sessionId = ARGV[1]
 local expiresAt = tonumber(ARGV[7])
 local maxSessions = 3
+
+-- 차단된 계정은 새로운 로그인 세션을 생성할 수 없다.
+-- 차단 여부 확인과 세션 생성을 동일한 Lua Script에서
+-- 처리하여 Redis 명령 사이의 동시성 문제를 방지한다.
+if redis.call('EXISTS', accountBlockedKey) == 1 then
+    return 'BLOCKED'
+end
 
 -- Redis 서버 시각을 기준으로 만료 여부와 로그인 순서를 판단한다.
 local time = redis.call('TIME')
@@ -52,6 +62,18 @@ if redis.call('ZCARD', userSessionsKey) >= maxSessions then
         redis.call('ZREM', userSessionsKey, oldest)
 
         evictedSessionId = string.match(oldest, '^([^|]+)|')
+
+        -- Sorted Set과 기존 세션 Hash를 같은 Lua 실행에서 제거한다.
+        -- 기존 Java 후속 삭제 호출에서 발생할 수 있는 경쟁 구간을 없앤다.
+        if evictedSessionId then
+            local evictedSessionKey = ARGV[8] .. evictedSessionId
+
+            if redis.call('HGET', evictedSessionKey, 'id') == ARGV[2] then
+                redis.call('DEL', evictedSessionKey)
+            end
+        else
+            return redis.error_reply('Invalid session index member')
+        end
     end
 end
 
@@ -81,6 +103,7 @@ if indexExpiresAt < expiresAt then
     redis.call('PEXPIREAT', userSessionsKey, ARGV[7])
 end
 
--- 교체된 세션 ID를 Java로 반환한다.
+-- Lua에서 이미 제거한 기존 세션 ID를 Java로 반환한다.
 -- 교체가 없었다면 빈 문자열을 반환한다.
+-- 차단된 계정은 위에서 BLOCKED를 반환한다.
 return evictedSessionId

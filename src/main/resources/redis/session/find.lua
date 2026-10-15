@@ -1,14 +1,22 @@
 -- 세션 상세 정보와 사용자별 세션 목록을 함께 확인한다.
+-- 차단된 계정은 유효한 세션이 존재하더라도 인증을 거부한다.
 
 -- KEYS[1]: 개별 세션 Hash Key
 -- KEYS[2]: 사용자별 세션 목록 Sorted Set Key
+-- KEYS[3]: 사용자 계정 차단 Key
 local sessionKey = KEYS[1]
 local userSessionsKey = KEYS[2]
+local accountBlockedKey = KEYS[3]
 
 -- ARGV[1]: sessionId
 -- ARGV[2]: 사용자 ID
 local sessionId = ARGV[1]
 local userId = ARGV[2]
+
+-- 계정이 차단되었다면 기존 로그인 세션을 사용할 수 없다.
+if redis.call('EXISTS', accountBlockedKey) == 1 then
+    return {}
+end
 
 -- Redis Hash에서 세션 정보를 읽는다.
 local fields = redis.call(
@@ -53,5 +61,6 @@ if not redis.call('ZSCORE', userSessionsKey, member) then
     return {}
 end
 
--- 모든 검증에 성공하면 세션 정보를 반환한다.
+-- 계정 차단, 세션 소유자, 만료 시간, 세션 목록 검증에
+-- 모두 성공하면 세션 정보를 반환한다.
 return fields

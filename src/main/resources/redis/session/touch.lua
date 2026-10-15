@@ -4,8 +4,10 @@
 
 -- KEYS[1]: 개별 세션 Hash Key
 -- KEYS[2]: 사용자별 세션 목록 Sorted Set Key
+-- KEYS[3]: 사용자 계정 차단 Key
 local sessionKey = KEYS[1]
 local userSessionsKey = KEYS[2]
+local accountBlockedKey = KEYS[3]
 
 -- ARGV[1]: sessionId
 -- ARGV[2]: 사용자 ID
@@ -15,6 +17,11 @@ local sessionId = ARGV[1]
 local userId = ARGV[2]
 local rememberTtl = tonumber(ARGV[3])
 local idleTtl = tonumber(ARGV[4])
+
+-- 계정 차단 후에는 활동 요청으로 기존 세션을 연장할 수 없다.
+if redis.call('EXISTS', accountBlockedKey) == 1 then
+    return 0
+end
 
 -- 세션이 없거나 다른 사용자의 세션이면 연장하지 않는다.
 if redis.call('HGET', sessionKey, 'id') ~= userId then
