@@ -6,14 +6,12 @@ import com.project.playground.global.validation.StringValidType;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
 
 @Getter
 @Setter
-@NoArgsConstructor
 public class SignUpRequest {
 
     @StringValid(label = "이름", required = true, max = 50)

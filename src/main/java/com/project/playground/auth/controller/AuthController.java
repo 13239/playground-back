@@ -7,6 +7,8 @@ import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.service.AuthService;
 import com.project.playground.global.security.session.Session;
+import com.project.playground.global.support.CommonUtils;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -22,8 +24,10 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        LoginResponse response = authService.login(request);
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest) {
+        String clientIp = CommonUtils.getClientIp(httpServletRequest);
+
+        LoginResponse response = authService.login(request, clientIp);
 
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore()) // 토큰이 포함된 응답을 캐시에 저장하지 않도록 설정

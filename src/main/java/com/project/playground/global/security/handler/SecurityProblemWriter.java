@@ -1,0 +1,50 @@
+package com.project.playground.global.security.handler;
+
+import com.project.playground.global.exception.ApiProblemFactory;
+import com.project.playground.global.exception.ErrorCode;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * 보안 필터에서 발생한 오류를 공통 ProblemDetail JSON 응답으로 작성한다.
+ */
+@Component
+@RequiredArgsConstructor
+public class SecurityProblemWriter {
+
+    private final JsonMapper jsonMapper;
+
+    public void write(HttpServletRequest request, HttpServletResponse response, ErrorCode errorCode) throws IOException {
+        // 이미 전송된 응답은 다시 작성하지 않는다.
+        if (response.isCommitted()) {
+            return;
+        }
+
+        ProblemDetail problem = ApiProblemFactory.create(errorCode);
+
+        // MVC를 거치지 않으므로 요청 경로를 직접 설정하며 쿼리 문자열은 포함하지 않는다.
+        problem.setInstance(URI.create(request.getRequestURI()));
+
+        // 직렬화를 먼저 완료한 후 UTF-8 JSON 응답을 작성한다.
+        byte[] body = jsonMapper.writeValueAsBytes(problem);
+
+        response.setStatus(errorCode.getStatus().value());
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setHeader(HttpHeaders.CACHE_CONTROL, CacheControl.noStore().getHeaderValue());
+
+        // 기본 Bearer 처리기가 설정한 WWW-Authenticate 헤더를 유지한다.
+        response.getOutputStream().write(body);
+    }
+}

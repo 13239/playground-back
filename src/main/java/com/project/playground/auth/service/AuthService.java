@@ -4,6 +4,7 @@ import com.project.playground.auth.dto.request.LoginRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.dto.response.SessionActivityResponse;
+import com.project.playground.auth.ratelimit.LoginRateLimitService;
 import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.auth.session.SessionExpirationPolicy;
 import com.project.playground.global.exception.BusinessException;
@@ -41,7 +42,12 @@ public class AuthService {
 
     private final SessionExpirationPolicy sessionExpirationPolicy;
 
-    public LoginResponse login(LoginRequest request) {
+    private final LoginRateLimitService loginRateLimitService;
+
+    public LoginResponse login(LoginRequest request, String clientIp) {
+        // 인증 시도 횟수를 먼저 증가시켜 동시 요청도 제한에 포함한다.
+        String accountSubject = loginRateLimitService.beforeLogin(request.getUsername(), clientIp);
+
         Authentication authentication;
 
         try {
@@ -51,6 +57,9 @@ public class AuthService {
         }
 
         CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
+
+        // 인증 성공 시 계정 카운터만 초기화하고, 실패하면 새 세션을 만들기 전에 중단한다.
+        loginRateLimitService.onAuthenticationSuccess(accountSubject);
 
         Instant now = Instant.now();
         UUID sessionId = UUID.randomUUID();
