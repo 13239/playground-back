@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Service
@@ -43,6 +44,8 @@ public class AuthService {
     private final SessionExpirationPolicy sessionExpirationPolicy;
 
     private final LoginRateLimitService loginRateLimitService;
+
+    private final TokenRefreshService tokenRefreshService;
 
     public LoginResponse login(LoginRequest request, String clientIp) {
         // 인증 시도 횟수를 먼저 증가시켜 동시 요청도 제한에 포함한다.
@@ -101,40 +104,7 @@ public class AuthService {
 
     // Refresh Token 갱신
     public LoginResponse refresh(RefreshRequest request) {
-        String oldToken = request.getRefreshToken();
-
-        // Refresh Token에서 기존 로그인 세션 ID를 가져온다.
-        UUID sessionId = jwtRefreshTokenService.extractSessionId(oldToken);
-
-        /*
-         * 유효한 Redis 세션인지 확인한다.
-         * 계정 차단 여부도 find.lua에서 함께 검증한다.
-         */
-        RedisSession session = redisSessionRepository.findBySessionId(sessionId).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
-
-        /*
-         * 비활성화되거나 삭제된 회원은 find.lua에서 먼저 거부한다.
-         * 실제 Refresh Token 회전도 rotate.lua에서 차단 상태와 토큰 해시를 원자적으로 재검증하므로 MySQL 조회가 필요 없다.
-         */
-
-        // 새로운 Refresh Token을 생성하되 sessionId는 유지한다.
-        String newToken = jwtRefreshTokenService.create(sessionId);
-
-        Jwt accessToken = jwtTokenService.createAccessToken(session.getId(), sessionId);
-
-        /*
-         * 기존 토큰 해시가 일치하는 경우에만 Redis의 Refresh Token을 새 해시로 교체한다.
-         *
-         * 동시에 두 갱신 요청이 오더라도 하나만 성공한다.
-         */
-        boolean rotated = redisSessionRepository.rotateRefreshToken(sessionId, session.getId(), jwtRefreshTokenService.hash(oldToken), jwtRefreshTokenService.hash(newToken));
-
-        if (!rotated) {
-            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
-        }
-
-        // Refresh 자체는 세션 만료 시간을 연장하지 않는다.
-        return createLoginResponse(accessToken, newToken, session.isKeepLoggedIn(), session.getExpiresAt());
+        return tokenRefreshService.refresh(request);
     }
 
     // 로그아웃
@@ -162,6 +132,7 @@ public class AuthService {
                 .refreshToken(refreshToken)
                 .tokenType(OAuth2AccessToken.TokenType.BEARER.getValue())
                 .expiresIn(expiresIn)
+                .accessTokenExpiresAt(accessToken.getExpiresAt().truncatedTo(ChronoUnit.SECONDS))
                 .keepLoggedIn(keepLoggedIn)
                 .sessionExpiresAt(sessionExpiresAt)
                 .build();

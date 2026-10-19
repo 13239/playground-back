@@ -1,5 +1,6 @@
 package com.project.playground.auth.repository;
 
+import com.project.playground.auth.dto.internal.RefreshRotationResult;
 import com.project.playground.global.security.session.RedisSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ClassPathResource;
@@ -31,6 +32,9 @@ public class RedisSessionRepository {
      * 비활성화되거나 삭제된 사용자 계정의 인증을 차단하는 Redis Key
      */
     private static final String ACCOUNT_BLOCKED_KEY_PREFIX = "auth:account:blocked:";
+
+    // BFF의 최대 요청 제한 30초 이후에도 동일 갱신의 응답 유실을 복구할 수 있는 짧은 공유 기간.
+    private static final Duration REFRESH_RESULT_TTL = Duration.ofSeconds(60);
 
     /**
      * 로그인 세션 생성 Lua Script
@@ -66,9 +70,9 @@ public class RedisSessionRepository {
     private static final RedisScript<List> FIND_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/find.lua"), List.class);
 
     /**
-     * 계정 차단 여부와 기존 Refresh Token 해시를 원자적으로 검증하고 회전
+     * 계정 차단 여부와 기존 Refresh Token 해시를 원자적으로 검증하고 회전·동일 갱신 결과 공유
      */
-    private static final RedisScript<Long> ROTATE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/rotate.lua"), Long.class);
+    private static final RedisScript<List> ROTATE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/rotate.lua"), List.class);
 
     /**
      * 로그인 세션 삭제
@@ -347,26 +351,38 @@ public class RedisSessionRepository {
         return result == 1L;
     }
 
-    // 기존 Refresh Token이 유효할 때만 새로운 토큰으로 교체한다.
-    public boolean rotateRefreshToken(UUID sessionId, Long userId, String oldHash, String newHash) {
-        Long result = redisTemplate.execute(
+    // 기존 Refresh Token이 유효할 때만 교체하며 동일한 갱신의 암호화 결과를 최대 60초간 공유한다.
+    public Optional<RefreshRotationResult> rotateRefreshToken(UUID sessionId, Long userId, String oldHash, String newHash, String requestHash, String encryptedTokens) {
+        List<?> result = redisTemplate.execute(
                 ROTATE_SCRIPT,
                 List.of(
                         buildKey(sessionId),
                         buildUserSessionsKey(userId),
-                        buildAccountBlockedKey(userId)
+                        buildAccountBlockedKey(userId),
+                        "auth:refresh-result:" + sessionId + ":" + oldHash + ":" + requestHash
                 ),
                 sessionId.toString(),
                 userId.toString(),
                 oldHash,
-                newHash
+                newHash,
+                encryptedTokens,
+                Long.toString(REFRESH_RESULT_TTL.toMillis())
         );
 
         if (result == null) {
             throw new IllegalStateException("Refresh Token 회전에 실패했습니다.");
         }
 
-        return result == 1L;
+        if (result.isEmpty())
+            return Optional.empty();
+
+        if (result.size() != 3 || result.stream().anyMatch(value -> !(value instanceof String))) {
+            throw new IllegalStateException("Refresh Token 회전 결과 형식이 올바르지 않습니다.");
+        }
+        return Optional.of(RefreshRotationResult.builder()
+                .encryptedTokens((String) result.get(0))
+                .sessionExpiresAt(Instant.ofEpochMilli(Long.parseLong((String) result.get(1))))
+                .keepLoggedIn(parseBoolean((String) result.get(2))).build());
     }
 
     /**

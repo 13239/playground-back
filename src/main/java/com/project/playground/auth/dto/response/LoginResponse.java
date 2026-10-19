@@ -18,6 +18,9 @@ public class LoginResponse {
     // Access Token의 만료 시간 (초)
     private long expiresIn;
 
+    // 중복 갱신 응답이나 통신 지연으로 Access Token 수명을 늘려 계산하지 않도록 절대 만료 시각을 제공한다.
+    private Instant accessTokenExpiresAt;
+
     // 로그인 유지 여부
     private boolean keepLoggedIn;
 
