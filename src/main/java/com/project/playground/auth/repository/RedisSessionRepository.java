@@ -81,6 +81,11 @@ public class RedisSessionRepository {
      */
     private static final RedisScript<Long> BLOCK_AND_REVOKE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/block-and-revoke.lua"), Long.class);
 
+    /**
+     * 재활성화한 상태 변경의 표식이 현재 차단 표식과 일치할 때만 차단을 해제한다.
+     */
+    private static final RedisScript<Long> UNBLOCK_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/unblock.lua"), Long.class);
+
     private final StringRedisTemplate redisTemplate;
 
     /**
@@ -282,14 +287,20 @@ public class RedisSessionRepository {
      * <p>
      * 차단 Key에는 TTL을 설정하지 않는다.
      * 중복 요청 시에도 차단 상태를 유지하며 남아 있는 세션을 정리한다.
+     * 상태 변경마다 새 표식을 저장하여 오래된 재활성화 후속 처리가 최신 차단을 해제하지 못하게 한다.
+     *
+     * @return 이번 상태 변경의 차단 표식
      */
-    public void blockAndRevokeAll(Long userId) {
+    public String blockAndRevokeAll(Long userId) {
+        String blockToken = UUID.randomUUID().toString();
+
         /*
          * KEYS[1]: 사용자별 세션 목록 Sorted Set Key
          * KEYS[2]: 사용자 계정 차단 Key
          *
          * ARGV[1]: 사용자 ID
          * ARGV[2]: 개별 로그인 세션 Hash Key 접두사
+         * ARGV[3]: 이번 상태 변경의 차단 표식
          */
         Long result = redisTemplate.execute(
                 BLOCK_AND_REVOKE_SCRIPT,
@@ -298,23 +309,42 @@ public class RedisSessionRepository {
                         buildAccountBlockedKey(userId)
                 ),
                 userId.toString(),
-                KEY_PREFIX
+                KEY_PREFIX,
+                blockToken
         );
 
-        if (result == null) {
+        if (result == null || result < 0L) {
             throw new IllegalStateException("계정 차단 및 로그인 세션 무효화에 실패했습니다.");
         }
 
+        return blockToken;
     }
 
     /**
      * 비활성·삭제 차단 Key를 제거하여 회원 재활성화를 허용한다.
      * <p>
      * 호출 전 DB에서 계정의 ACTIVE 전환을 검증하고, 기존 로그인 세션을 모두 무효화해야 한다.
-     * 서비스 계층의 행 잠금 및 트랜잭션 내부에서만 호출한다.
+     * 서비스 계층의 행 잠금 및 트랜잭션으로 상태 변경을 직렬화하고 DB 커밋 이후에만 호출한다.
+     * 차단 표식을 원자적으로 비교하여 이후 비활성화·삭제가 만든 차단은 유지한다.
+     *
+     * @return 이번 상태 변경의 차단을 해제했으면 true, 이후 변경 등으로 표식이 다르면 false
      */
-    public void unblockAccount(Long userId) {
-        redisTemplate.delete(buildAccountBlockedKey(userId));
+    public boolean unblockAccount(Long userId, String blockToken) {
+        if (blockToken == null || blockToken.isBlank()) {
+            throw new IllegalArgumentException("계정 차단 표식은 필수입니다.");
+        }
+
+        Long result = redisTemplate.execute(
+                UNBLOCK_SCRIPT,
+                List.of(buildAccountBlockedKey(userId)),
+                blockToken
+        );
+
+        if (result == null || (result != 0L && result != 1L)) {
+            throw new IllegalStateException("계정 차단 해제 결과를 확인하지 못했습니다.");
+        }
+
+        return result == 1L;
     }
 
     // 기존 Refresh Token이 유효할 때만 새로운 토큰으로 교체한다.

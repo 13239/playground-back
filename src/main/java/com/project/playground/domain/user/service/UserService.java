@@ -95,14 +95,15 @@ public class UserService {
      * 삭제된 계정은 이 메서드로 복구할 수 없다.
      * <p>
      * 1. 회원 행에 쓰기 잠금을 건다.
-     * 2. MySQL에 ACTIVE를 반영하고 SQL을 flush한다.
-     * 3. Redis에 남은 세션을 다시 폐기한 다음 차단 Key를 해제한다.
+     * 2. Redis에 남은 세션을 다시 폐기하고 이번 상태 변경의 차단 표식을 저장한다.
+     * 3. MySQL에 ACTIVE를 반영하고 SQL을 flush한다.
+     * 4. DB 커밋 이후 차단 표식이 일치할 때만 차단 Key를 해제한다.
      * <p>
-     * DB 커밋 전에 Redis를 해제하지만, 이전 세션은 제거된 상태다.
-     * 기존 DB 상태가 ACTIVE가 아니므로 다른 로그인 요청은 커밋 이전에는 DB 인증을 통과할 수 없다(READ COMMITTED 기준).
+     * DB 커밋 전에는 차단을 유지하므로 이전에 비밀번호 인증을 끝낸 로그인 요청도 세션을 만들 수 없다.
+     * 커밋 이후 더 최근의 비활성화·삭제가 실행되면 차단 표식이 달라져 이전 재활성화 처리는 차단을 해제하지 못한다.
      * <p>
-     * 트랜잭션이 롤백되거나 결과가 불확실해지면 재차 차단한다.
-     * 이 보상 처리는 MySQL·Redis 간 분산 트랜잭션이 아니므로 Redis 장애 시 운영 재조정이 필요하다.
+     * 트랜잭션이 롤백되거나 결과가 불확실해지면 차단 표식을 그대로 유지한다.
+     * MySQL·Redis 간 분산 트랜잭션은 아니므로 커밋 후 Redis 해제 실패 시 차단 상태를 확인하고 재활성화를 재시도해야 한다.
      */
     @Transactional
     public void activate(Long userId) {
@@ -114,36 +115,32 @@ public class UserService {
 
         if (user.getStatus() == UserStatus.ACTIVE) {
             // DB는 활성 상태이지만 Redis 차단 Key가 남아 있다면 기존 세션을 모두 무효화한 후 차단 상태를 복구한다.
-            if (redisSessionRepository.isAccountBlocked(userId)) {
-                redisSessionRepository.blockAndRevokeAll(userId);
-                redisSessionRepository.unblockAccount(userId);
+            if (!redisSessionRepository.isAccountBlocked(userId)) {
+                return;
             }
-
-            return;
         }
 
-        user.activate();
-        userRepository.flush();
+        // 이전 토큰 재사용을 방지하기 위해 세션 목록을 다시 비운다.
+        String blockToken = redisSessionRepository.blockAndRevokeAll(userId);
 
-        // 커밋 실패 시 Redis 차단을 복원하여 기존 권한이 되살아나지 않도록 한다.
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            user.activate();
+            userRepository.flush();
+        }
+
+        // 커밋에 성공한 경우에만 차단 해제를 시도한다. 롤백 시에는 별도 Redis 호출 없이 차단이 유지된다.
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
-            public void afterCompletion(int status) {
-                if (status == STATUS_COMMITTED) {
-                    return;
-                }
-
+            public void afterCommit() {
                 try {
-                    redisSessionRepository.blockAndRevokeAll(userId);
+                    redisSessionRepository.unblockAccount(userId, blockToken);
                 } catch (RuntimeException e) {
-                    log.error("계정 재활성화 롤백 후 Redis 차단 복원 실패. userId={}", userId, e);
+                    // DB 커밋을 되돌릴 수 없으므로 서비스 오류를 반환하고 재시도로 차단 상태를 복구한다.
+                    log.error("계정 재활성화 DB 커밋 후 Redis 차단 해제 실패. 재활성화 재시도 필요. userId={}", userId, e);
+                    throw new BusinessException(ErrorCode.AUTH_SERVICE_UNAVAILABLE);
                 }
             }
         });
-
-        // 이전 토큰 재사용을 방지하기 위해 세션 목록을 다시 비운다.
-        redisSessionRepository.blockAndRevokeAll(userId);
-        redisSessionRepository.unblockAccount(userId);
     }
 
     // 상태 변경 시 동일 사용자 행에 대한 쓰기 잠금을 확보한다.

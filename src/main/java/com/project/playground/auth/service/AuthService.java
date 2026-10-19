@@ -144,9 +144,13 @@ public class AuthService {
 
     // 의미 있는 사용자 활동이 발생했을 때 세션 만료 시간을 연장한다.
     public SessionActivityResponse activity(Session session) {
-        Instant expiresAt = redisSessionRepository.extendOnActivity(session.getSessionId(), session.getId(), sessionExpirationPolicy.getRememberTtl(), sessionExpirationPolicy.getIdleTtl()).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_SESSION));
+        Instant expiresAt = redisSessionRepository.extendOnActivity(session.getSessionId(), session.getId(), sessionExpirationPolicy.getRememberTtl(), sessionExpirationPolicy.getIdleTtl())
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_SESSION));
 
-        return SessionActivityResponse.builder().keepLoggedIn(session.isKeepLoggedIn()).expiresAt(expiresAt).build();
+        return SessionActivityResponse.builder()
+                .keepLoggedIn(session.isKeepLoggedIn())
+                .expiresAt(expiresAt)
+                .build();
     }
 
     // 로그인 응답 생성

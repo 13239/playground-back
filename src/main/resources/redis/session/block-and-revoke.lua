@@ -8,8 +8,15 @@ local accountBlockedKey = KEYS[2]
 
 -- ARGV[1]: 사용자 ID
 -- ARGV[2]: 개별 로그인 세션 Hash Key 접두사
+-- ARGV[3]: 이번 상태 변경의 차단 표식
 local userId = ARGV[1]
 local sessionKeyPrefix = ARGV[2]
+local blockToken = ARGV[3]
+
+-- 표식 없는 차단 요청은 실행하지 않는다.
+if not blockToken or blockToken == '' then
+    return redis.error_reply('Account block token is required')
+end
 
 -- 사용자별 Sorted Set에 등록된 모든 로그인 세션을 조회한다.
 -- Member 형식: {sessionId}|{expiresAt}
@@ -17,7 +24,8 @@ local members = redis.call('ZRANGE', userSessionsKey, 0, -1)
 
 -- 해당 사용자 계정의 로그인 및 JWT 인증을 차단한다.
 -- 차단 Key에는 TTL을 설정하지 않는다.
-redis.call('SET', accountBlockedKey, '1')
+-- 상태 변경마다 새 표식을 저장하여 이전 재활성화 요청과 구분한다.
+redis.call('SET', accountBlockedKey, blockToken)
 
 local revokedCount = 0
 
