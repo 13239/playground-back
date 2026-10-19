@@ -34,6 +34,7 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
         }
 
         // Redis에서 실제 로그인 중인 세션인지 확인한다.
+        // 요청마다 조회하여 변경된 세션 정보와 계정 차단·세션 폐기를 다음 인증에 반영한다.
         RedisSession session = redisSessionRepository.findBySessionId(sessionId, userId)
                 .orElseThrow(() -> new InvalidBearerTokenException("종료되었거나 만료된 로그인 세션입니다."));
 

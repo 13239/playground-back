@@ -24,12 +24,14 @@ public class RedisSession {
 
     private final Instant expiresAt;
 
+    // 검증한 세션의 만료 정보도 Principal에 전달하여 인증 이후의 중복 Redis 조회를 피한다.
     public Session toSession() {
         return Session.builder()
                 .sessionId(sessionId)
                 .id(id)
                 .username(username)
                 .keepLoggedIn(keepLoggedIn)
+                .expiresAt(expiresAt)
                 .build();
     }
 }

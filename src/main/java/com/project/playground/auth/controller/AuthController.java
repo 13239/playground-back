@@ -2,7 +2,7 @@ package com.project.playground.auth.controller;
 
 import com.project.playground.auth.dto.request.LoginRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
-import com.project.playground.auth.dto.response.CurrentUserResponse;
+import com.project.playground.auth.dto.response.CurrentSessionResponse;
 import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.service.AuthService;
@@ -55,13 +55,20 @@ public class AuthController {
     // 실제 사용자 활동 시 세션 만료 시간 연장
     @PostMapping("/activity")
     public ResponseEntity<SessionActivityResponse> activity(@AuthenticationPrincipal Session session) {
+        SessionActivityResponse activity = authService.activity(session);
+
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(authService.activity(session));
+                .body(activity);
     }
 
-    @GetMapping("/me")
-    public ResponseEntity<CurrentUserResponse> me() {
-        return ResponseEntity.ok(null);
+    // 현재 요청에서 검증한 Redis 세션으로 사용자 식별 정보와 세션 유지 정책을 반환한다.
+    @GetMapping("/session")
+    public ResponseEntity<CurrentSessionResponse> session(@AuthenticationPrincipal(errorOnInvalidType = true) Session session) {
+        CurrentSessionResponse currentSessionResponse = CurrentSessionResponse.from(session);
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore()) // 사용자별 인증 정보를 HTTP 캐시에 저장하지 않는다.
+                .body(currentSessionResponse);
     }
 }
