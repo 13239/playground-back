@@ -20,6 +20,9 @@ public class Session {
 
     private final String username;
 
+    // 요청 서명을 이 로그인 세션의 브라우저 키와 대조할 때만 사용한다. 공개 사용자 응답에는 포함하지 않는다.
+    private final String browserKeyThumbprint;
+
     private final boolean keepLoggedIn;
 
     // 인증 시 Redis에서 읽은 세션 만료 시각이며 Access Token의 만료 시각과는 구분한다.

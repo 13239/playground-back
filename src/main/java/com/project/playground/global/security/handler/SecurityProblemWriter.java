@@ -43,6 +43,8 @@ public class SecurityProblemWriter {
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setHeader(HttpHeaders.CACHE_CONTROL, CacheControl.noStore().getHeaderValue());
+        // 증명 저장 상한은 이력을 조기 삭제하지 않고 요청을 제한한다. 브라우저에 짧은 재시도 대기를 안내한다.
+        if (errorCode == ErrorCode.BROWSER_PROOF_RATE_LIMIT_EXCEEDED) response.setHeader(HttpHeaders.RETRY_AFTER, "60");
 
         // 기본 Bearer 처리기가 설정한 WWW-Authenticate 헤더를 유지한다.
         response.getOutputStream().write(body);

@@ -7,6 +7,7 @@
 
 -- KEYS[1]: 개별 세션 Hash Key
 -- KEYS[2]: 사용자별 세션 목록 Sorted Set Key
+-- KEYS[3]: 해당 세션의 최신 갱신 결과 Hash Key
 local sessionKey = KEYS[1]
 local userSessionsKey = KEYS[2]
 
@@ -36,5 +37,7 @@ end
 local member = sessionId .. '|' .. fields[3]
 
 redis.call('ZREM', userSessionsKey, member)
+-- 세션을 종료한 뒤 짧게 남아 있을 수 있는 암호화 갱신 결과도 함께 삭제한다.
+redis.call('DEL', KEYS[3])
 
 return redis.call('DEL', sessionKey)

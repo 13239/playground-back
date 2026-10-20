@@ -18,6 +18,9 @@ public class RedisSession {
 
     private final String refreshToken;
 
+    // 로그인 시 소유를 증명한 공개키의 RFC 7638 지문. 같은 세션에서 키 교체는 허용하지 않는다.
+    private final String browserKeyThumbprint;
+
     private final boolean keepLoggedIn;
 
     private final Instant createdAt;
@@ -30,6 +33,7 @@ public class RedisSession {
                 .sessionId(sessionId)
                 .id(id)
                 .username(username)
+                .browserKeyThumbprint(browserKeyThumbprint)
                 .keepLoggedIn(keepLoggedIn)
                 .expiresAt(expiresAt)
                 .build();

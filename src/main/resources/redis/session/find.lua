@@ -28,11 +28,13 @@ local fields = redis.call(
     'refreshToken',
     'keepLoggedIn',
     'createdAt',
-    'expiresAt'
+    'expiresAt',
+    -- 키가 등록되지 않은 이전 계약의 세션은 자동으로 신뢰하거나 키를 재등록하지 않는다.
+    'browserKeyThumbprint'
 )
 
 -- 필수 정보가 없으면 유효하지 않은 세션이다.
-for i = 1, 7 do
+for i = 1, 8 do
     if not fields[i] then
         return {}
     end

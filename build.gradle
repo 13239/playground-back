@@ -56,3 +56,8 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// 로컬 자격 증명은 bootRun에서만 읽는다. Docker 배포 JAR에는 dev/prod 설정만 포함한다.
+tasks.withType(Jar).configureEach {
+    exclude '**/application-local.properties'
+}

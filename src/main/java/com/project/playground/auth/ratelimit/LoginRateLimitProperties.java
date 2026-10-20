@@ -25,7 +25,7 @@ public record LoginRateLimitProperties(
         @DurationMin(seconds = 1)
         Duration accountWindow,
 
-        // IP별 허용 인증 시도 횟수. 로그인 성공 시에도 카운터를 유지한다.
+        // IP별 허용 실패·진행 중 예약 수. 로그인 성공 시 해당 요청의 예약만 반환한다.
         @Min(1)
         int ipMaxAttempts,
 

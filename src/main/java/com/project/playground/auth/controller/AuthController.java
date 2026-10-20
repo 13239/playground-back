@@ -1,6 +1,10 @@
 package com.project.playground.auth.controller;
 
 import com.project.playground.auth.clientip.LoginClientIpResolver;
+import com.project.playground.auth.proof.BrowserProof;
+import com.project.playground.auth.proof.BrowserProofService;
+import com.project.playground.auth.dto.request.ProofChallengeRequest;
+import com.project.playground.auth.dto.response.ProofChallengeResponse;
 import com.project.playground.auth.dto.request.LoginRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.CurrentSessionResponse;
@@ -25,12 +29,22 @@ public class AuthController {
 
     private final LoginClientIpResolver loginClientIpResolver;
 
+    private final BrowserProofService browserProofService;
+
+    // 인증 데이터 없이 nonce만 발급하며 세션·토큰·사용자 활동을 변경하지 않는다.
+    @PostMapping("/proof-challenge")
+    public ResponseEntity<ProofChallengeResponse> challenge(@Valid @RequestBody ProofChallengeRequest request, HttpServletRequest servletRequest) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(browserProofService.challenge(request, loginClientIpResolver.resolve(servletRequest)));
+    }
+
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest) {
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest,
+                                              @RequestAttribute(BrowserProof.ATTRIBUTE) BrowserProof proof) {
         // 실제 연결 상대를 검증한 전용 판별기로 로그인 시도 제한에 사용할 IP를 결정한다.
         String clientIp = loginClientIpResolver.resolve(httpServletRequest);
 
-        LoginResponse response = authService.login(request, clientIp);
+        LoginResponse response = authService.login(request, clientIp, proof);
 
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore()) // 토큰이 포함된 응답을 캐시에 저장하지 않도록 설정
@@ -38,8 +52,9 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<LoginResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-        LoginResponse response = authService.refresh(request);
+    public ResponseEntity<LoginResponse> refresh(@Valid @RequestBody RefreshRequest request,
+                                                @RequestAttribute(BrowserProof.ATTRIBUTE) BrowserProof proof) {
+        LoginResponse response = authService.refresh(request, proof);
 
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore()) // 토큰이 포함된 응답을 캐시에 저장하지 않도록 설정

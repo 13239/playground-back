@@ -1,8 +1,12 @@
 package com.project.playground.auth.repository;
 
+import com.project.playground.auth.dto.internal.LoginSessionReplacement;
 import com.project.playground.auth.dto.internal.RefreshRotationResult;
+import com.project.playground.global.exception.BusinessException;
+import com.project.playground.global.exception.ErrorCode;
 import com.project.playground.global.security.session.RedisSession;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -33,8 +37,14 @@ public class RedisSessionRepository {
      */
     private static final String ACCOUNT_BLOCKED_KEY_PREFIX = "auth:account:blocked:";
 
+    // 세션당 최신 한 건만 덮어쓰는 암호화 갱신 결과 Key. 토큰별 이력을 저장하지 않는다.
+    private static final String REFRESH_RESULT_KEY_PREFIX = "auth:refresh-result:";
+
     // BFF의 최대 요청 제한 30초 이후에도 동일 갱신의 응답 유실을 복구할 수 있는 짧은 공유 기간.
     private static final Duration REFRESH_RESULT_TTL = Duration.ofSeconds(60);
+
+    // BFF 최대 요청 시간보다 길게 유지하여 같은 이전 쿠키로 온 동시 로그인·응답 유실 재시도를 공유한다.
+    private static final Duration LOGIN_RESULT_TTL = Duration.ofSeconds(60);
 
     /**
      * 로그인 세션 생성 Lua Script
@@ -44,17 +54,18 @@ public class RedisSessionRepository {
      * 1. 사용자 계정 차단 여부 확인
      * 2. 만료된 세션 목록 정리
      * 3. 동일한 sessionId 중복 생성 방지
-     * 4. 최대 3개 제한 확인
-     * 5. 필요한 경우 가장 오래된 세션을 목록에서 제거
-     * 6. 새로운 로그인 세션 Hash 저장 및 TTL 설정
-     * 7. 사용자별 Sorted Set에 신규 세션 등록
+     * 4. 같은 이전 쿠키의 중복 로그인 결과 확인
+     * 5. 증명이 일치하는 기존 세션 제거 후 최대 3개 제한 확인
+     * 6. 필요한 경우 가장 오래된 세션을 목록에서 제거
+     * 7. 새로운 로그인 세션 Hash 저장 및 TTL 설정
+     * 8. 사용자별 Sorted Set에 신규 세션 등록 및 암호화 로그인 결과 공유
      * <p>
      * 반환값
-     * - 빈 문자열: 세션 생성 성공, 제거된 세션 없음
-     * - UUID 문자열: 생성 성공, 기존 세션 하나를 Lua에서 제거
+     * - 인증 암호문: 생성 성공 또는 같은 로그인 조건의 중복 결과
      * - BLOCKED: 차단된 사용자 계정
      * - DUPLICATE: 동일한 세션 ID가 이미 존재
      * - EXPIRED: 신규 세션의 만료 시각이 지남
+     * - REPLACED: 이전 쿠키로 다른 로그인 조건을 요청했거나 공유 결과의 세션이 이미 변경됨
      */
     private static final RedisScript<String> CREATE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/create.lua"), String.class);
 
@@ -70,7 +81,7 @@ public class RedisSessionRepository {
     private static final RedisScript<List> FIND_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/find.lua"), List.class);
 
     /**
-     * 계정 차단 여부와 기존 Refresh Token 해시를 원자적으로 검증하고 회전·동일 갱신 결과 공유
+     * 계정 차단 여부와 기존 Refresh Token 해시·세대를 원자적으로 검증하고 회전·동일 결과 공유·재사용 세션 폐기
      */
     private static final RedisScript<List> ROTATE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/rotate.lua"), List.class);
 
@@ -97,12 +108,18 @@ public class RedisSessionRepository {
      * <p>
      * 차단된 사용자 계정은 로그인 세션을 생성할 수 없다.
      * 사용자별 동시 로그인은 최대 3개까지 허용한다.
+     * 기존 세션 교체를 먼저 처리하므로 같은 브라우저의 재로그인으로 다른 기기를 밀어내지 않는다.
      * 이미 3개가 존재하면 가장 오래된 세션을 종료하고 새로운 세션을 등록한다.
      */
-    public boolean create(RedisSession session) {
+    public Optional<String> create(RedisSession session, @Nullable LoginSessionReplacement replacement, String encryptedResult) {
         if (!session.getExpiresAt().isAfter(Instant.now())) {
             throw new IllegalArgumentException("세션 만료 시각이 올바르지 않습니다.");
         }
+
+        // 기존 계정은 새 로그인 계정과 다를 수 있다. 소유자 조회 이후에도 Lua에서 증명과 소유자를 재검증한다.
+        String previousUserId = replacement == null ? null : redisTemplate.<String, String>opsForHash()
+                .get(buildKey(replacement.getSessionId()), "id");
+        Long previousOwner = previousUserId == null ? session.getId() : Long.valueOf(previousUserId);
 
         /*
          * Lua Script 실행
@@ -110,6 +127,10 @@ public class RedisSessionRepository {
          * KEYS[1]: 신규 세션 Hash Key
          * KEYS[2]: 사용자별 세션 목록 Sorted Set Key
          * KEYS[3]: 사용자 계정 차단 Key
+         * KEYS[4]: 교체할 기존 세션 Hash Key (없으면 신규 세션 Key를 전달하며 사용하지 않음)
+         * KEYS[5]: 기존 소유자의 세션 목록 Key
+         * KEYS[6]: 이전 세션·토큰 해시에 결합한 암호화 로그인 결과 Key
+         * KEYS[7]: 로그인 직전 회전된 토큰의 세션별 최신 갱신 결과 Key
          *
          * ARGV[1]: sessionId
          * ARGV[2]: 사용자 ID
@@ -119,13 +140,26 @@ public class RedisSessionRepository {
          * ARGV[6]: 생성 시각 (Unix milliseconds)
          * ARGV[7]: 만료 시각 (Unix milliseconds)
          * ARGV[8]: 개별 세션 Hash Key 접두사
+         * ARGV[9]: 기존 sessionId (없으면 빈 문자열)
+         * ARGV[10]: 기존 사용자 ID
+         * ARGV[11]: 기존 Refresh Token 해시
+         * ARGV[12]: 암호화 로그인 응답
+         * ARGV[13]: 로그인 결과 공유 기간 (milliseconds)
+         * ARGV[14]: 기존 갱신 식별자 해시 (없으면 빈 문자열)
+         * ARGV[15]: 세션별 갱신 결과 Key 접두사
+         * ARGV[16]: 로그인에서 소유를 증명한 브라우저 공개키 지문
          */
-        String evictedSessionId = redisTemplate.execute(
+        String result = redisTemplate.execute(
                 CREATE_SCRIPT,
                 List.of(
                         buildKey(session.getSessionId()),
                         buildUserSessionsKey(session.getId()),
-                        buildAccountBlockedKey(session.getId())
+                        buildAccountBlockedKey(session.getId()),
+                        replacement == null ? buildKey(session.getSessionId()) : buildKey(replacement.getSessionId()),
+                        buildUserSessionsKey(previousOwner),
+                        replacement == null ? buildKey(session.getSessionId())
+                                : "auth:login-result:" + replacement.getSessionId() + ":" + replacement.getRefreshTokenHash(),
+                        replacement == null ? buildKey(session.getSessionId()) : buildRefreshResultKey(replacement.getSessionId())
                 ),
                 session.getSessionId().toString(),
                 session.getId().toString(),
@@ -134,7 +168,15 @@ public class RedisSessionRepository {
                 Boolean.toString(session.isKeepLoggedIn()),
                 Long.toString(session.getCreatedAt().toEpochMilli()),
                 Long.toString(session.getExpiresAt().toEpochMilli()),
-                KEY_PREFIX
+                KEY_PREFIX,
+                replacement == null ? "" : replacement.getSessionId().toString(),
+                previousOwner.toString(),
+                replacement == null ? "" : replacement.getRefreshTokenHash(),
+                encryptedResult,
+                Long.toString(LOGIN_RESULT_TTL.toMillis()),
+                replacement == null || replacement.getRefreshRequestHash() == null ? "" : replacement.getRefreshRequestHash(),
+                REFRESH_RESULT_KEY_PREFIX,
+                session.getBrowserKeyThumbprint()
         );
 
         /*
@@ -142,31 +184,36 @@ public class RedisSessionRepository {
          * BLOCKED: 계정 차단으로 세션 생성 거부
          * DUPLICATE: 중복 세션 ID
          * EXPIRED: 만료된 세션
+         * REPLACED: 동일한 이전 쿠키를 사용하는 다른 로그인 또는 이후 인증 변경과 충돌
          *
-         * BLOCKED는 정상적인 인증 거부 결과이므로 false를 반환한다.
-         * 나머지 실패 결과는 예상하지 못한 세션 생성 오류로 처리한다.
+         * BLOCKED는 정상적인 인증 거부 결과이므로 Optional.empty()를 반환한다.
+         * REPLACED는 정상적인 경합으로 409를 반환하고 나머지 실패는 예상하지 못한 세션 생성 오류로 처리한다.
          */
-        if (evictedSessionId == null) {
+        if (result == null) {
             throw new IllegalStateException("로그인 세션을 생성하지 못했습니다.");
         }
 
-        if ("BLOCKED".equals(evictedSessionId)) {
-            return false;
+        if ("BLOCKED".equals(result)) {
+            return Optional.empty();
         }
 
-        if ("DUPLICATE".equals(evictedSessionId) || "EXPIRED".equals(evictedSessionId)) {
+        if ("REPLACED".equals(result)) {
+            throw new BusinessException(ErrorCode.LOGIN_SESSION_CHANGED);
+        }
+
+        if ("DUPLICATE".equals(result) || "EXPIRED".equals(result)) {
             throw new IllegalStateException("로그인 세션을 생성하지 못했습니다.");
         }
 
         /*
-         * 기존 세션이 3개였다면 가장 오래된 세션의 ID가 반환된다.
+         * 기존 세션 교체 후에도 3개가 남아 있다면 가장 오래된 세션을 제거한다.
          *
          * Lua Script에서 사용자별 Sorted Set과 기존 Hash를 함께 삭제한다.
          * Java에서 다시 삭제하지 않아도 되므로 Redis 추가 왕복 호출과 세션 Hash가 뒤늦게 남는 동시성 구간을 없앤다.
          *
-         * 빈 문자열이면 제거된 세션이 없다는 의미다.
+         * 같은 이전 쿠키의 동시 로그인은 먼저 저장한 인증 암호문을 공유한다.
          */
-        return true;
+        return Optional.of(result);
     }
 
     // 사용자 활동 시 Redis 세션의 만료 시간을 연장한다.
@@ -261,7 +308,7 @@ public class RedisSessionRepository {
             return Optional.empty();
         }
 
-        if (fields.size() != 7 || fields.stream().anyMatch(value -> !(value instanceof String))) {
+        if (fields.size() != 8 || fields.stream().anyMatch(value -> !(value instanceof String))) {
             throw new IllegalStateException("Redis 세션 데이터 형식이 올바르지 않습니다.");
         }
 
@@ -274,6 +321,7 @@ public class RedisSessionRepository {
                 .keepLoggedIn(parseBoolean((String) fields.get(4)))
                 .createdAt(Instant.ofEpochMilli(Long.parseLong((String) fields.get(5))))
                 .expiresAt(Instant.ofEpochMilli(Long.parseLong((String) fields.get(6))))
+                .browserKeyThumbprint((String) fields.get(7))
                 .build();
 
         return Optional.of(session);
@@ -351,22 +399,24 @@ public class RedisSessionRepository {
         return result == 1L;
     }
 
-    // 기존 Refresh Token이 유효할 때만 교체하며 동일한 갱신의 암호화 결과를 최대 60초간 공유한다.
-    public Optional<RefreshRotationResult> rotateRefreshToken(UUID sessionId, Long userId, String oldHash, String newHash, String requestHash, String encryptedTokens) {
+    // 서명을 검증한 세대를 전달한다. 동일 갱신은 최대 60초 공유하고 그 밖의 이전 세대 재사용은 세션을 폐기한다.
+    public Optional<RefreshRotationResult> rotateRefreshToken(UUID sessionId, Long userId, long generation, String oldHash, String newHash, String requestHash, String encryptedTokens) {
         List<?> result = redisTemplate.execute(
                 ROTATE_SCRIPT,
                 List.of(
                         buildKey(sessionId),
                         buildUserSessionsKey(userId),
                         buildAccountBlockedKey(userId),
-                        "auth:refresh-result:" + sessionId + ":" + oldHash + ":" + requestHash
+                        buildRefreshResultKey(sessionId)
                 ),
                 sessionId.toString(),
                 userId.toString(),
                 oldHash,
                 newHash,
                 encryptedTokens,
-                Long.toString(REFRESH_RESULT_TTL.toMillis())
+                Long.toString(REFRESH_RESULT_TTL.toMillis()),
+                Long.toString(generation),
+                requestHash
         );
 
         if (result == null) {
@@ -375,6 +425,11 @@ public class RedisSessionRepository {
 
         if (result.isEmpty())
             return Optional.empty();
+
+        // Lua에서 세션 Hash·사용자 목록·갱신 결과를 모두 폐기한 뒤에만 재사용 오류를 반환한다.
+        if (result.size() == 1 && "REUSED".equals(result.getFirst())) {
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_REUSED);
+        }
 
         if (result.size() != 3 || result.stream().anyMatch(value -> !(value instanceof String))) {
             throw new IllegalStateException("Refresh Token 회전 결과 형식이 올바르지 않습니다.");
@@ -393,7 +448,8 @@ public class RedisSessionRepository {
                 DELETE_SCRIPT,
                 List.of(
                         buildKey(sessionId),
-                        buildUserSessionsKey(userId)
+                        buildUserSessionsKey(userId),
+                        buildRefreshResultKey(sessionId)
                 ),
                 sessionId.toString(),
                 userId.toString()
@@ -426,6 +482,11 @@ public class RedisSessionRepository {
     // 사용자별 로그인 세션 목록의 Redis Key를 생성한다.
     private String buildUserSessionsKey(Long id) {
         return USER_SESSIONS_KEY_PREFIX + id;
+    }
+
+    // 갱신 횟수에 관계없이 세션별로 같은 결과 Key를 사용한다.
+    private String buildRefreshResultKey(UUID sessionId) {
+        return REFRESH_RESULT_KEY_PREFIX + sessionId;
     }
 
     // 사용자 계정의 로그인 및 JWT 인증 차단 여부를 저장하는 Redis Key를 생성한다.

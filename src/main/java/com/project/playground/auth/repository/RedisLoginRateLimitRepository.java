@@ -22,6 +22,9 @@ public class RedisLoginRateLimitRepository {
     // 횟수 확인, 증가, 최초 만료 설정을 하나의 Lua 실행으로 처리한다.
     private static final RedisScript<Long> ACQUIRE_SCRIPT = RedisScript.of(new ClassPathResource("redis/login-rate-limit/acquire.lua"), Long.class);
 
+    // IP 제한은 성공한 요청 한 건만 되돌릴 수 있도록 개별 예약을 원자적으로 등록한다.
+    private static final RedisScript<Long> RESERVE_SCRIPT = RedisScript.of(new ClassPathResource("redis/login-rate-limit/reserve.lua"), Long.class);
+
     private final StringRedisTemplate redisTemplate;
 
     /**
@@ -51,6 +54,21 @@ public class RedisLoginRateLimitRepository {
         }
 
         return remainingMillis;
+    }
+
+    /** 검증 전 요청을 예약해 동시 공격도 제한하고, 실패한 예약은 원래 시간 창이 끝날 때까지 유지한다. */
+    public long reserve(String subject, String reservationId, int maxAttempts, Duration window) {
+        if (maxAttempts < 1 || window.toMillis() < 1) throw new IllegalArgumentException("로그인 제한 설정이 올바르지 않습니다.");
+        Long remaining = redisTemplate.execute(RESERVE_SCRIPT, List.of(buildKey(subject)),
+                Integer.toString(maxAttempts), Long.toString(window.toMillis()), reservationId);
+        if (remaining == null || remaining < 0) throw new IllegalStateException("로그인 IP 예약을 확인하지 못했습니다.");
+        return remaining;
+    }
+
+    /** 무작위 예약 ID가 일치하는 필드만 제거하므로 늦은 성공 응답도 다음 시간 창의 실패를 줄이지 않는다. */
+    public void release(String subject, String reservationId) {
+        Long removed = redisTemplate.opsForHash().delete(buildKey(subject), reservationId);
+        if (removed == null) throw new IllegalStateException("로그인 IP 예약을 반환하지 못했습니다.");
     }
 
     /**

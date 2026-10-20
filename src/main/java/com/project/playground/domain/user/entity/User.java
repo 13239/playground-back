@@ -22,7 +22,7 @@ public class User extends TimeEntity {
     private Long id;
 
     @Column(nullable = false, length = 50)
-    private String name;
+    private String nickname;
 
     @Column(nullable = false, unique = true, length = 50)
     private String username;
@@ -30,17 +30,17 @@ public class User extends TimeEntity {
     @Column(nullable = false, length = 255)
     private String password;
 
-    @Column(nullable = false, length = 100)
+    @Column(length = 100)
     private String email;
 
-    @Column(nullable = false, length = 30)
+    @Column(length = 30)
     private String phone;
 
-    @Column(nullable = false)
+    @Column
     private LocalDate birthday;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "char(1)")
+    @Column(columnDefinition = "char(1)")
     private Gender gender;
 
     @Enumerated(EnumType.STRING)
@@ -48,8 +48,8 @@ public class User extends TimeEntity {
     private UserStatus status;
 
     @Builder
-    public User(String name, String username, String password, String email, String phone, LocalDate birthday, Gender gender, UserStatus status) {
-        this.name = name;
+    public User(String nickname, String username, String password, String email, String phone, LocalDate birthday, Gender gender, UserStatus status) {
+        this.nickname = nickname;
         this.username = username;
         this.password = password;
         this.email = email;
