@@ -4,7 +4,7 @@ Spring Boot 4.1.1·Java 25 기반이다. 브라우저는 Next.js BFF에만 연�
 
 ## 환경 구분
 
-`application.properties` 없이 `application-local.properties`, `application-dev.properties`, `application-prod.properties` 세 파일만 사용한다. 각 파일이 독립된 전체 설정이며 `SPRING_PROFILES_ACTIVE`로 하나만 선택한다. 프로필을 혼용하면 시작을 거절한다.
+`application-local.properties` 없이 `application-local.properties`, `application-dev.properties`, `application-prod.properties` 세 파일만 사용한다. 각 파일이 독립된 전체 설정이며 `SPRING_PROFILES_ACTIVE`로 하나만 선택한다. 프로필을 혼용하면 시작을 거절한다.
 
 | 환경 | Spring 연결 | 브라우저 개인키 | 연결 정보 |
 | --- | --- | --- | --- |
@@ -14,13 +14,46 @@ Spring Boot 4.1.1·Java 25 기반이다. 브라우저는 Next.js BFF에만 연�
 
 ## 로컬 실행
 
+모든 환경에서 서버 시작 중 Redis에 `PING`을 보내 `PONG` 응답을 확인한다. Redis 미실행·접속 거부·인증 실패·시간 초과 또는 비정상 응답이면 웹 서버가 요청을 받기 전에 시작을 실패 처리한다. 연결 주소와 시간 제한은 각 환경의 기존 Redis 설정을 사용한다.
+
 기존 로컬 DB·Redis·JWT 값과 주석을 `src/main/resources/application-local.properties`로 옮겼다. 이 파일은 비밀 정보가 있으므로 버전 관리하지 않으며 배포 JAR에서도 제외한다. `bootRun`은 로컬 리소스를 사용한다.
+
+DB 변경은 Flyway가 서버 시작 시 적용하고 Hibernate는 결과를 검증한다. 현재 로컬 DB는 프로필 컬럼을 포함한 `V1` 기준 등록을 완료했다. 별도의 수동 프로필 DDL을 다시 실행하지 않는다. 다른 기존 DB의 최초 전환 절차는 아래 Flyway 안내를 따른다.
 
 ```powershell
 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
 ```
 
 `local` 프로필은 Spring을 `127.0.0.1`에 바인딩하고 실제 루프백 연결에만 mTLS 개발 예외를 허용한다. 브라우저 키 검증은 개발에서도 생략하지 않는다. BFF는 `http://localhost:9080`, 공개 Origin은 `http://localhost:3000`을 사용한다. 포트·공개 Origin을 바꾸면 양쪽 설정을 함께 변경한다.
+
+## Flyway 스키마 관리
+
+Spring Boot가 관리하는 `spring-boot-starter-flyway`와 MySQL 모듈 `flyway-mysql`을 사용한다. local/dev/prod 모두 같은 [버전 SQL 폴더](src/main/resources/db/migration)를 읽는다. 서버 시작 순서는 Flyway 마이그레이션·이력 검증 → Hibernate 스키마 검증(`ddl-auto=validate`) → 요청 수신이다. DB 연결 실패, SQL 실행 오류, 적용된 SQL의 체크섬 불일치 또는 엔티티와 스키마 불일치가 발생하면 시작을 실패 처리한다. `schema.sql` 자동 실행은 비활성화했다. [Spring Boot 초기화 안내](https://docs.spring.io/spring-boot/how-to/data-initialization.html)
+
+### 새 DB
+
+MySQL에 빈 데이터베이스와 접속 계정을 먼저 준비하고 해당 환경의 연결 정보를 지정한다. 앱 계정에는 마이그레이션 SQL에 필요한 테이블 생성·변경 권한이 있어야 한다. 평소와 같은 명령으로 서버를 시작하면 [V1 초기 SQL](src/main/resources/db/migration/V1__initial_schema.sql)이 회원 테이블과 프로필 컬럼을 생성하고 `flyway_schema_history`에 실행 이력을 저장한다. 데이터베이스 자체나 DB 계정은 Flyway에서 생성하지 않는다.
+
+### 기존 DB의 최초 전환
+
+현재 `localhost:3306/playground`는 기존 회원 테이블과 데이터를 유지한 채 `V1` baseline 등록을 완료했다. 재시작부터 추가 설정 없이 사용한다.
+
+다른 dev/prod 기존 DB는 먼저 백업하고, 프로필 컬럼·기본값·고유 인덱스 등을 포함한 실제 테이블 구조가 `V1`과 일치하는지 확인한다. baseline은 기존 SQL을 실행하거나 테이블 구조를 자동 대조하지 않으므로, 일부 변경만 적용된 DB를 그대로 등록하지 않는다. 확인한 DB에 한해 첫 실행에만 다음 옵션을 추가한다. `target=1`로 최초 등록 중 후속 버전의 적용을 막는다.
+
+```powershell
+# local 예시. 기존 dev/prod는 해당 실행 프로필과 배포 방식에 같은 일회성 옵션을 사용한다.
+.\gradlew.bat bootRun --args='--spring.profiles.active=local --spring.flyway.baseline-on-migrate=true --spring.flyway.target=1'
+```
+
+Docker/JAR 배포에서는 첫 실행에만 `SPRING_FLYWAY_BASELINE_ON_MIGRATE=true`, `SPRING_FLYWAY_TARGET=1`을 공급해도 된다. `flyway_schema_history`의 성공한 `BASELINE` 버전 `1`을 확인한 다음 서버를 종료하고 **두 옵션을 모두 제거한 일반 설정으로 다시 실행**한다. 일반 설정은 `baseline-on-migrate=false`이므로 이력이 없는 기존 DB를 임의로 초기 기준으로 인정하지 않는다. 이미 등록된 현재 로컬 DB에는 이 절차를 반복하지 않는다. [Flyway baseline 설정 안내](https://documentation.red-gate.com/fd/flyway-baseline-on-migrate-setting-277578974.html)
+
+### 이후 DB 변경
+
+1. 다음 순번인 `V2__설명.sql`, `V3__설명.sql`을 `src/main/resources/db/migration`에 추가한다. 버전은 중복 없이 증가시키고 SQL에 변경 목적을 주석으로 작성한다.
+2. 적용 전 검토·백업 후 서버를 시작한다. 적용하지 않은 새 버전만 순서대로 실행된다. 여러 인스턴스는 같은 버전 SQL을 포함한 빌드를 배포한다.
+3. 한 번 적용한 SQL은 수정·삭제하지 않는다. 정정도 새 버전으로 추가한다. 체크섬 검증, 순서 검증, `clean-disabled=true`를 유지하며 자동 `repair`나 데이터 삭제는 수행하지 않는다.
+
+`V1`에는 이미 수동 반영한 `profile_avatar`까지 포함되어 있다. 중복된 수동 생성 SQL과 프로필 컬럼 추가 SQL은 제거했으며 DB 변경 SQL은 `src/main/resources/db/migration`에서 관리한다. 현재 적용된 구조를 기준으로 관리하므로 프로필 `ALTER TABLE`을 `V2`로 다시 추가하지 않는다. MySQL DDL은 오류 시 전체가 자동 롤백되지 않을 수 있으므로 실패한 변경은 실제 테이블 상태를 확인하고 복구한 뒤 이력을 정리한다.
 
 ## 개발 서버 HTTP·Docker
 
@@ -102,3 +135,9 @@ Refresh Token은 서명된 세션 ID·세대를 포함한다. Redis에는 현재
 ## 배포 전환
 
 Spring과 BFF를 함께 배포한다. 기존 키 미등록 세션/쿠키에는 브라우저 키를 자동 등록하지 않으며, 기존 사용자는 한 번 다시 로그인해야 한다. 이후 정상 활동에 대한 주기적 강제 로그아웃 정책은 없다. 현재 공개 회원 API는 가입만 제공한다. 비밀번호·이메일 변경/계정 삭제 API를 연결할 때는 브라우저 증명에 더해 해당 작업의 현재 비밀번호/패스키 재확인을 필수로 적용해야 한다.
+
+## 프로필 캐릭터
+
+`GET /api/auth/profile`은 검증된 본인의 닉네임·캐릭터를 조회하고 `PUT /api/auth/profile`은 `{ "avatarId": "FOX" }`처럼 식별자 하나로 변경한다. JWT·Redis·브라우저 서명은 기존 보호 API와 동일하게 검증하며 회원 ID는 요청 대신 인증 Principal에서 가져온다.
+
+허용 식별자는 `CAT`, `DOG`, `RABBIT`, `FOX`, `BEAR`, `PANDA`, `OTTER`, `PENGUIN`, `FROG`, `DUCK`다. 숫자 순번·외부 URL·다른 식별자는 거절한다. `tbl_user.profile_avatar`에 저장하며 기본값은 `CAT`다. 프로필 변경은 계정 상태 변경과 같은 행 잠금을 사용해 비활성화·삭제 상태가 오래된 수정으로 덮어써지지 않게 한다. 프로필 응답과 조회는 인증 세션 갱신을 대신하지 않는다.

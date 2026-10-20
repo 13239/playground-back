@@ -1,6 +1,7 @@
 package com.project.playground.domain.user.entity;
 
 import com.project.playground.domain.user.enums.Gender;
+import com.project.playground.domain.user.enums.ProfileAvatar;
 import com.project.playground.domain.user.enums.UserStatus;
 import com.project.playground.global.audit.TimeEntity;
 import jakarta.persistence.*;
@@ -10,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.Objects;
 
 @Entity
 // 동시 가입의 아이디 충돌을 식별할 수 있도록 새 스키마의 고유 제약 이름을 고정한다.
@@ -24,6 +26,11 @@ public class User extends TimeEntity {
 
     @Column(nullable = false, length = 50)
     private String nickname;
+
+    // 기존 회원은 DDL 기본값으로, 신규 회원은 엔티티 기본값으로 고양이 프로필을 사용한다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "profile_avatar", nullable = false, length = 20, columnDefinition = "varchar(20)")
+    private ProfileAvatar profileAvatar = ProfileAvatar.CAT;
 
     @Column(nullable = false, length = 50)
     private String username;
@@ -58,6 +65,11 @@ public class User extends TimeEntity {
         this.birthday = birthday;
         this.gender = gender;
         this.status = status;
+    }
+
+    /** 고정된 캐릭터만 선택할 수 있으며 프로필 변경으로 다른 회원 정보는 수정하지 않는다. */
+    public void changeProfileAvatar(ProfileAvatar profileAvatar) {
+        this.profileAvatar = Objects.requireNonNull(profileAvatar, "프로필 캐릭터는 필수입니다.");
     }
 
     public void activate() {

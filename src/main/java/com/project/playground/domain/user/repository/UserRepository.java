@@ -19,6 +19,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     /**
      * 계정 상태 변경 시 동일 회원의 비활성화·삭제·재활성화를 직렬화한다.
+     * 프로필 변경도 이 잠금을 공유하여 다른 변경이 계정 상태를 덮어쓰지 않도록 한다.
      * 트랜잭션 종료 시까지 데이터베이스 행 잠금을 유지한다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
