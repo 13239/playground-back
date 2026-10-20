@@ -36,26 +36,6 @@ public final class CommonUtils {
         return !ip.matches(IPV4_PATTERN) && !ip.matches(IPV6_PATTERN);
     }
 
-    public static String getClientIp(HttpServletRequest request) {
-        List<String> headerNames = List.of(
-                "X-Forwarded-For", "X-Real-IP", "Proxy-Client-IP", "WL-Proxy-Client-IP",
-                "HTTP_CLIENT_IP", "HTTP_X_FORWARDED_FOR", "X-Cluster-Client-IP", "X-Forwarded"
-        );
-
-        String ip = headerNames.stream()
-                .map(request::getHeader)
-                .filter(h -> StringUtils.hasText(h) && !"unknown".equalsIgnoreCase(h))
-                .findFirst()
-                .orElseGet(request::getRemoteAddr);
-
-        // 여러 IP가 있을 경우 첫 번째 IP 추출
-        if (StringUtils.hasText(ip) && ip.contains(",")) {
-            return ip.split(",")[0].trim();
-        }
-
-        return ip;
-    }
-
     public static String getCookieValue(HttpServletRequest request, String name) {
         if (Objects.isNull(request.getCookies()))
             return null;

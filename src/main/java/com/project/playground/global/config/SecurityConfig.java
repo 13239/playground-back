@@ -13,12 +13,14 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.RequestCacheConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -65,6 +67,14 @@ public class SecurityConfig {
                         .authenticationEntryPoint(apiAuthenticationEntryPoint)
                         .accessDeniedHandler(apiAccessDeniedHandler)
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .withObjectPostProcessor(new ObjectPostProcessor<BearerTokenAuthenticationFilter>() {
+                            @Override
+                            public <O extends BearerTokenAuthenticationFilter> O postProcess(O filter) {
+                                // 기본 처리기의 서비스 예외 재전파를 대신하여 Redis 장애도 공통 503으로 응답한다.
+                                filter.setAuthenticationFailureHandler(apiAuthenticationEntryPoint::commence);
+                                return filter;
+                            }
+                        })
                 )
                 .build();
     }

@@ -4,7 +4,9 @@ import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.global.security.session.RedisSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.core.authority.FactorGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
@@ -35,8 +37,14 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
 
         // Redis에서 실제 로그인 중인 세션인지 확인한다.
         // 요청마다 조회하여 변경된 세션 정보와 계정 차단·세션 폐기를 다음 인증에 반영한다.
-        RedisSession session = redisSessionRepository.findBySessionId(sessionId, userId)
-                .orElseThrow(() -> new InvalidBearerTokenException("종료되었거나 만료된 로그인 세션입니다."));
+        RedisSession session;
+        try {
+            session = redisSessionRepository.findBySessionId(sessionId, userId)
+                    .orElseThrow(() -> new InvalidBearerTokenException("종료되었거나 만료된 로그인 세션입니다."));
+        } catch (DataAccessException e) {
+            // 필터 단계의 Redis 장애도 공통 인증 실패 처리기로 전달하여 세션 만료와 구분한다.
+            throw new AuthenticationServiceException("로그인 세션 저장소를 이용할 수 없습니다.", e);
+        }
 
         // JWT 사용자와 Redis 세션 소유자가 동일해야 한다.
         if (!session.getId().equals(userId)) {

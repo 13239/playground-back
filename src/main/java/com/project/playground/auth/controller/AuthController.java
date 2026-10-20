@@ -1,5 +1,6 @@
 package com.project.playground.auth.controller;
 
+import com.project.playground.auth.clientip.LoginClientIpResolver;
 import com.project.playground.auth.dto.request.LoginRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
 import com.project.playground.auth.dto.response.CurrentSessionResponse;
@@ -7,7 +8,6 @@ import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.service.AuthService;
 import com.project.playground.global.security.session.Session;
-import com.project.playground.global.support.CommonUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,9 +23,12 @@ public class AuthController {
 
     private final AuthService authService;
 
+    private final LoginClientIpResolver loginClientIpResolver;
+
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest) {
-        String clientIp = CommonUtils.getClientIp(httpServletRequest);
+        // 실제 연결 상대를 검증한 전용 판별기로 로그인 시도 제한에 사용할 IP를 결정한다.
+        String clientIp = loginClientIpResolver.resolve(httpServletRequest);
 
         LoginResponse response = authService.login(request, clientIp);
 

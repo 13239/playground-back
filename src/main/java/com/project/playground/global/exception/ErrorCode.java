@@ -24,7 +24,7 @@ public enum ErrorCode {
     // 로그인 시도 제한 초과. 계정 또는 IP 중 제한된 대상을 응답으로 구분하지 않는다.
     LOGIN_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요."),
 
-    // DB 또는 Redis 접근 실패로 로그인 제한을 확인할 수 없는 경우
+    // 인증 처리 중 DB·Redis 연결 실패 또는 시간 초과로 로그인·세션 상태를 확인할 수 없는 경우
     AUTH_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "로그인 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해주세요."),
 
     // 보안 필터에서 발생하는 인증 및 접근 권한 오류

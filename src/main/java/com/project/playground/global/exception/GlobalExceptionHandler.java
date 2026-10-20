@@ -1,8 +1,11 @@
 package com.project.playground.global.exception;
 
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -44,6 +47,15 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = e.getErrorCode();
 
         return ApiProblemFactory.create(errorCode);
+    }
+
+    // 인증 서비스 오류와 DB·Redis 연결 실패·시간 초과는 인증 무효와 구분한다.
+    @ExceptionHandler({AuthenticationServiceException.class, DataAccessResourceFailureException.class, TransientDataAccessException.class})
+    public ResponseEntity<ProblemDetail> authenticationServiceUnavailable(Exception e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(ApiProblemFactory.create(ErrorCode.AUTH_SERVICE_UNAVAILABLE));
     }
 
     // 로그인 시도 제한 초과
