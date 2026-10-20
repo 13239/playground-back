@@ -19,6 +19,15 @@ public enum ErrorCode {
     SIGN_UP_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원가입 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
 
+    // 오목 방은 계정당 하나만 열고 소유자만 빈 대기방을 닫을 수 있다.
+    ROOM_ALREADY_HOSTING(HttpStatus.CONFLICT, "이미 만든 방이 있습니다. 목록에서 내 방을 확인해 주세요."),
+    ROOM_REQUEST_EXPIRED(HttpStatus.CONFLICT, "이미 닫힌 방의 요청입니다. 새로 방을 만들어 주세요."),
+    ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "방을 찾을 수 없습니다."),
+    ROOM_CANNOT_CLOSE(HttpStatus.CONFLICT, "다른 참가자가 있거나 대국 중인 방은 닫을 수 없습니다."),
+    ROOM_CODE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "방을 만들지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    ROOM_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "방 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+    ROOM_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "오목 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
+
     // 로그인 및 세션 관련 비즈니스 오류
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."),

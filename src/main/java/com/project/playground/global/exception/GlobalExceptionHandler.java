@@ -2,6 +2,7 @@ package com.project.playground.global.exception;
 
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
 import com.project.playground.auth.ratelimit.SignUpRateLimitException;
+import com.project.playground.domain.gomoku.service.RoomRateLimitException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.*;
@@ -69,6 +70,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SignUpRateLimitException.class)
     public ResponseEntity<ProblemDetail> signUpRateLimitException(SignUpRateLimitException e) {
         return rateLimitResponse(e.getErrorCode(), e.getRetryAfterSeconds());
+    }
+
+    // 방 API는 별도 계정 예산을 사용하면서 동일한 Retry-After 응답 계약을 따른다.
+    @ExceptionHandler(RoomRateLimitException.class)
+    public ResponseEntity<ProblemDetail> roomRateLimitException(RoomRateLimitException exception) {
+        return rateLimitResponse(exception.getErrorCode(), exception.getRetryAfterSeconds());
     }
 
     private ResponseEntity<ProblemDetail> rateLimitResponse(ErrorCode errorCode, long retryAfterSeconds) {

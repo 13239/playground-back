@@ -141,3 +141,21 @@ Spring과 BFF를 함께 배포한다. 기존 키 미등록 세션/쿠키에는 �
 `GET /api/auth/profile`은 검증된 본인의 닉네임·캐릭터를 조회하고 `PUT /api/auth/profile`은 `{ "avatarId": "FOX" }`처럼 식별자 하나로 변경한다. JWT·Redis·브라우저 서명은 기존 보호 API와 동일하게 검증하며 회원 ID는 요청 대신 인증 Principal에서 가져온다.
 
 허용 식별자는 `CAT`, `DOG`, `RABBIT`, `FOX`, `BEAR`, `PANDA`, `OTTER`, `PENGUIN`, `FROG`, `DUCK`다. 숫자 순번·외부 URL·다른 식별자는 거절한다. `tbl_user.profile_avatar`에 저장하며 기본값은 `CAT`다. 프로필 변경은 계정 상태 변경과 같은 행 잠금을 사용해 비활성화·삭제 상태가 오래된 수정으로 덮어써지지 않게 한다. 프로필 응답과 조회는 인증 세션 갱신을 대신하지 않는다.
+
+## 오목 1단계: 방 목록·생성
+
+[V2 방 테이블 SQL](src/main/resources/db/migration/V2__create_gomoku_rooms.sql)을 Flyway가 적용한다. V1과 회원 테이블을 변경하지 않는다. 공개 API는 모두 기존 BFF 인증·JWT·Redis 세션·브라우저 증명을 요구하며 `Cache-Control: no-store`로 응답한다.
+
+| 메서드·경로 | 동작 |
+| --- | --- |
+| `POST /api/gomoku/rooms/search` | `query`, `publicOnly`, `waitingOnly`, `page`로 검색. 최신순·6개 고정 크기, 제목 부분 검색·6자리 초대 코드 정확 검색 |
+| `POST /api/gomoku/rooms` | `requestId`, `title`, `visibility`, `password`, `undoLimit`, `forbiddenRule`로 생성. 방장과 코드는 서버에서 결정 |
+| `POST /api/gomoku/rooms/close` | `roomId`의 소유자만 본인의 빈 대기방을 닫음 |
+
+검색어는 30자, 페이지 번호는 0~1000, 제목은 공백만 있는 값과 제어 문자를 제외한 1~30자다. `visibility`는 `PUBLIC`/`PRIVATE`, 무르기는 `1`/`3`/`5`, 금수는 `NONE`/`STANDARD`만 허용한다. 비공개 방 비밀번호는 영문·숫자 4~8자로 받고 기존 Argon2 정책으로 해시한다. 공개 방에는 비밀번호를 저장하지 않는다. 회원 ID·판 크기·시간·인원·선공 방식·관전 옵션을 입력으로 받지 않는다. 검색은 사용자 입력을 LIKE 패턴으로 해석하지 않으며 비ASCII 검색어는 ASCII 초대 코드 컬럼과 비교하지 않는다.
+
+목록은 필요한 표시 컬럼만 조인 조회하고 비밀번호·해시·회원 아이디를 반환하지 않는다. 초대 코드는 생성 응답과 본인이 만든 방 정보에만 포함한다. 열린 방은 계정당 하나이며 회원 행 잠금과 생성 컬럼의 고유 제약으로 동시 생성을 막는다. 같은 UUID v4 `requestId`의 재시도는 기존 열린 방을 반환하고 닫힌 요청을 재사용하면 `409 ROOM_REQUEST_EXPIRED`다. 닫기는 소프트 삭제로 이력을 보존한다.
+
+별도 Redis 계정 예산으로 검색 120회/분, 생성 10회/10분, 닫기 30회/분을 허용한다. 초과는 `429 ROOM_RATE_LIMIT_EXCEEDED`와 `Retry-After`, Redis 제한 상태 확인 실패는 `503 ROOM_SERVICE_UNAVAILABLE`다. 일반 로그인 제한과 별도 키를 사용한다. 모든 환경에서 `spring.jpa.open-in-view=false`로 서비스 트랜잭션 밖의 지연 로딩을 막는다.
+
+입장·참가자 관리·빠른 매칭·실시간 대기실·착수·금수 판정·채팅은 이 단계에 구현하지 않는다. 금수 설정과 대국 고정 규칙은 이후 단계에서 사용할 계약으로 보존한다. 관전은 범위에서 제외한다.
