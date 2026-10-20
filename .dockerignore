@@ -1,0 +1,16 @@
+# 로컬 자격 증명은 Docker 빌드 단계에도 전달하지 않는다.
+.git
+.gradle
+build
+out
+bin
+.idea
+.env*
+*.log
+*.pem
+*.key
+src/main/resources/application-local.properties
+src/test
+# 로컬 확인용으로 Git에서도 제외한 디버그 API는 배포하지 않는다.
+src/main/java/com/project/playground/test
+README.md

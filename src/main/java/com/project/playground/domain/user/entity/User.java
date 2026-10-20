@@ -12,7 +12,8 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "tbl_user")
+// 동시 가입의 아이디 충돌을 식별할 수 있도록 새 스키마의 고유 제약 이름을 고정한다.
+@Table(name = "tbl_user", uniqueConstraints = @UniqueConstraint(name = "uk_tbl_user_username", columnNames = "username"))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends TimeEntity {
@@ -24,7 +25,7 @@ public class User extends TimeEntity {
     @Column(nullable = false, length = 50)
     private String nickname;
 
-    @Column(nullable = false, unique = true, length = 50)
+    @Column(nullable = false, length = 50)
     private String username;
 
     @Column(nullable = false, length = 255)

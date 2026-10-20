@@ -14,6 +14,9 @@ public enum ErrorCode {
 
     // 회원 관련 비즈니스 오류
     DUPLICATE_USERNAME(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다."),
+    // 가입 요청 예산은 로그인 시도·계정 잠금과 별도로 관리한다.
+    SIGN_UP_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "회원가입 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+    SIGN_UP_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원가입 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
 
     // 로그인 및 세션 관련 비즈니스 오류

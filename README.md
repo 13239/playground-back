@@ -26,13 +26,13 @@ Spring Boot 4.1.1·Java 25 기반이다. 브라우저는 Next.js BFF에만 연�
 
 Spring에는 `SPRING_PROFILES_ACTIVE=dev`, BFF에는 `APP_ENV=dev`를 지정한다. Next는 개발 서버에서도 `next build` 후 `next start`로 실행하며 `NODE_ENV=dev`로 설정하지 않는다.
 
-사용자에게 주는 `http://123.123.234.123:9080`은 **Spring이 아닌 프론트/BFF의 공개 주소**다. Docker에서 프론트의 3000 포트를 호스트 9080으로 연결하고 Spring 9080·DB·Redis는 내부 네트워크에만 둔다. 서로 다른 컨테이너의 내부 9080과 호스트의 공개 9080은 충돌하지 않는다. 예를 들어 BFF의 `BACKEND_ORIGIN`은 `http://backend:9080`, Redis 서비스 이름은 `redis`로 둔다. 실제 배포 Compose/Dockerfile은 아직 생성하지 않았다.
+사용자에게 주는 `http://123.234.123.222:9081`은 **사이트의 공개 주소**다. 호스트 9081 → Nginx → 프론트/BFF 3000 → Spring 9080으로 연결한다. BFF의 `BACKEND_ORIGIN`은 `http://backend:9080`이다. Nginx가 실제 접속 IP를 덮어써 전달하고 Spring은 고정된 BFF 내부 IP만 신뢰한다. 기존 개발 서버의 MySQL·Redis에 연결하는 이미지 묶음을 PC에서 만들고 서버에서 직접 실행한다. 순서는 [Linux 직접 배포 안내](../deploy/README.md)를 따른다. 앱 포트는 호스트에 공개하지 않고 기존 DB 연결은 서버의 3306·6379를 사용한다.
 
 dev 필수 환경 변수는 다음과 같다.
 
 | 설정 | 대상·용도 |
 | --- | --- |
-| `APP_ORIGIN=http://123.123.234.123:9080` | Spring·BFF 공통. 실제 공개 IP/포트와 일치 |
+| `APP_ORIGIN=http://123.234.123.222:9081` | Spring·BFF 공통. 실제 공개 IP/포트와 일치 |
 | `BFF_DEV_SHARED_SECRET` | Spring·BFF 공통. JWT·쿠키 키와 다른 무작위 32바이트 Base64 |
 | `JWT_SECRET` | Spring 전용. 로컬·운영과 다른 무작위 32바이트 이상 Base64 |
 | `AUTH_COOKIE_SECRET` | BFF 전용. 무작위 32바이트 Base64 |
@@ -69,6 +69,16 @@ prod는 신뢰 BFF 주소 목록이 비어 있으면 시작을 거절하고, 실
 로그인 제한은 계정별 5회/15분을 유지한다. IP별 기본 예산은 실패·진행 중 요청 120회/분으로, 검증 전에 무작위 ID로 예약하고 정상 비밀번호 인증 성공 시 해당 예약만 반환한다. 같은 공인 IP의 정상 로그인이 실패 횟수에 쌓이지 않으며 다른 사람의 실패·다음 시간 창의 예약도 지우지 않는다. IP 예약은 별도 v2 Key를 사용해 기존 문자열 카운터와 충돌하지 않는다.
 
 서버 인증서/CA·클라이언트 인증서·개인키는 저장소나 이미지에 포함하지 않는다. 인증서 교체 시 Spring에 새 지문을 먼저 허용하고 BFF 인증서를 교체·재시작한 뒤 이전 지문을 제거한다. 이 교체는 브라우저 세션 키를 변경하지 않는다. 운영은 P6Spy SQL 출력과 `show-sql`을 끈다. 비밀번호·Cookie·Authorization·브라우저 증명·개인키를 프록시/애플리케이션 로그에 남기지 않는다.
+
+## 회원가입
+
+`POST /api/user/sign-up`은 닉네임(1~50자), 아이디(4~50자), 비밀번호(6~72자)만으로 가입할 수 있다. 기존 선택 개인정보는 생략 가능하며 새 가입 화면은 필수 세 항목만 전달한다. 비밀번호는 기존 `argon2_v1` 정책으로 해시하고 계정 상태는 서버에서 `ACTIVE`로 정한다. 성공 응답은 본문 없는 `201 Created`이며 로그인 세션은 별도 로그인으로 발급한다.
+
+아이디 중복 사전 확인과 DB 고유 제약을 함께 적용한다. 동시 가입에서 발생한 아이디 제약 충돌도 `409 DUPLICATE_USERNAME`으로 반환한다. 기존 DDL의 `username` 및 신규 명시 이름 `uk_tbl_user_username`을 지원하므로 기존 DB 인덱스를 바꿀 필요는 없다. 다른 무결성 오류를 중복 아이디로 숨기지 않는다.
+
+가입은 기존 BFF 연결 인증·신뢰 IP 판별을 공유한다. 비밀번호 계산 전에 별도 Redis 키 `auth:sign-up:rate-limit:ip:<IP 지문>`으로 IP별 기본 120회/60초를 제한한다. 성공·중복 요청을 포함하며 로그인 실패 카운터·15분 계정 제한에는 영향을 주지 않는다. 최초 요청부터 만료를 계산하고 제한 초과 요청이 대기 시간을 연장하지 않는다. `429 SIGN_UP_RATE_LIMIT_EXCEEDED`는 `Retry-After`를 제공하며 Redis 장애는 `503 SIGN_UP_SERVICE_UNAVAILABLE`로 처리한다.
+
+`auth.sign-up.rate-limit.ip-max-attempts`와 `auth.sign-up.rate-limit.ip-window-seconds`로 조정할 수 있다. 환경 변수는 각각 `AUTH_SIGN_UP_RATE_LIMIT_IP_MAX_ATTEMPTS`, `AUTH_SIGN_UP_RATE_LIMIT_IP_WINDOW_SECONDS`다. 운영에서도 실제 사용자 IP 전달 설정을 적용해야 한다.
 
 ## 브라우저 키와 요청 검증
 

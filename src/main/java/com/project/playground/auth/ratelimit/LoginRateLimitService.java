@@ -2,9 +2,9 @@ package com.project.playground.auth.ratelimit;
 
 import com.project.playground.auth.repository.RedisLoginRateLimitRepository;
 import com.project.playground.auth.dto.internal.LoginRateLimitAttempt;
-import com.project.playground.domain.user.repository.reader.UserReader;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
+import com.project.playground.global.security.LoginUserDetailsLookup;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -31,7 +31,7 @@ public class LoginRateLimitService {
 
     private final LoginRateLimitProperties properties;
 
-    private final UserReader userReader;
+    private final LoginUserDetailsLookup loginUserDetailsLookup;
 
     /**
      * IP 제한을 먼저 확인한 뒤 계정별 인증 시도 횟수를 증가시킨다.
@@ -53,8 +53,9 @@ public class LoginRateLimitService {
              * DB가 동일한 계정으로 판단하는 입력은 같은 사용자 ID로 제한한다.
              * 존재하지 않는 아이디도 별도 카운터를 적용하여 반복 요청을 제한한다.
              * 정규화는 미등록 아이디의 제한 식별자에만 적용하며 인증 입력은 변경하지 않는다.
+             * 조회 결과는 이 HTTP 요청의 비밀번호 인증에서도 공유하여 같은 사용자를 다시 조회하지 않는다.
              */
-            String accountSubject = userReader.findByUsername(username)
+            String accountSubject = loginUserDetailsLookup.findByUsername(username)
                     .map(user -> "account:" + user.getId())
                     .orElseGet(() -> "unknown:" + fingerprint(Normalizer.normalize(username, Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT)));
 

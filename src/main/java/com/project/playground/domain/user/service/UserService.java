@@ -10,11 +10,15 @@ import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -47,7 +51,28 @@ public class UserService {
                 .status(UserStatus.ACTIVE)
                 .build();
 
-        userRepository.save(user);
+        try {
+            // 사전 중복 확인 이후 동시에 들어온 가입도 DB 고유 제약으로 최종 확인한다.
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException e) {
+            // 기존 DDL의 username 제약과 신규 명시 이름만 중복 아이디로 변환한다. 다른 무결성 오류는 숨기지 않는다.
+            if (isDuplicateUsername(e)) {
+                throw new BusinessException(ErrorCode.DUPLICATE_USERNAME);
+            }
+            throw e;
+        }
+    }
+
+    // MySQL이 제공하는 테이블 접두사·따옴표를 제거하되 오류 메시지나 입력값으로 중복 여부를 추측하지 않는다.
+    private boolean isDuplicateUsername(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation && violation.getConstraintName() != null) {
+                String constraint = violation.getConstraintName().replace("`", "").replace("\"", "");
+                constraint = constraint.substring(constraint.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+                return constraint.equals("username") || constraint.equals("uk_tbl_user_username");
+            }
+        }
+        return false;
     }
 
     /**

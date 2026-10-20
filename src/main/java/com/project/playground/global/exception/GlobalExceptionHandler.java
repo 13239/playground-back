@@ -1,6 +1,7 @@
 package com.project.playground.global.exception;
 
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
+import com.project.playground.auth.ratelimit.SignUpRateLimitException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.*;
@@ -61,9 +62,17 @@ public class GlobalExceptionHandler {
     // 로그인 시도 제한 초과
     @ExceptionHandler(LoginRateLimitException.class)
     public ResponseEntity<ProblemDetail> loginRateLimitException(LoginRateLimitException e) {
-        long retryAfterSeconds = e.getRetryAfterSeconds();
+        return rateLimitResponse(e.getErrorCode(), e.getRetryAfterSeconds());
+    }
 
-        ProblemDetail problem = ApiProblemFactory.create(e.getErrorCode());
+    // 가입 제한도 동일한 Retry-After 계약을 사용하되 로그인 실패 상태를 변경하지 않는다.
+    @ExceptionHandler(SignUpRateLimitException.class)
+    public ResponseEntity<ProblemDetail> signUpRateLimitException(SignUpRateLimitException e) {
+        return rateLimitResponse(e.getErrorCode(), e.getRetryAfterSeconds());
+    }
+
+    private ResponseEntity<ProblemDetail> rateLimitResponse(ErrorCode errorCode, long retryAfterSeconds) {
+        ProblemDetail problem = ApiProblemFactory.create(errorCode);
 
         // 프론트가 응답 본문에서도 재시도 대기 시간을 확인할 수 있도록 제공한다.
         problem.setProperty("retryAfterSeconds", retryAfterSeconds);
