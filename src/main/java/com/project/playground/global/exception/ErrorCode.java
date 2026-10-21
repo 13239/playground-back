@@ -42,6 +42,10 @@ public enum ErrorCode {
     BFF_AUTHENTICATION_REQUIRED(HttpStatus.FORBIDDEN, "허용되지 않은 서버 연결입니다."),
     INVALID_SESSION(HttpStatus.UNAUTHORIZED, "유효하지 않거나 만료된 로그인 세션입니다."),
 
+    // 채팅 접속 증명은 로그인 예산과 별도로 제한하고 내부 연결 오류와 구분한다.
+    CHAT_TICKET_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "채팅 접속 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+    CHAT_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "채팅 서비스를 일시적으로 이용할 수 없습니다."),
+
     // 같은 이전 세션으로 다른 로그인 조건을 동시에 적용하거나 이미 다음 인증 변경이 끝난 경우
     LOGIN_SESSION_CHANGED(HttpStatus.CONFLICT, "다른 요청에서 로그인 상태가 변경되었습니다. 다시 로그인해 주세요."),
 

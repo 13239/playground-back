@@ -1,5 +1,6 @@
 package com.project.playground.global.exception;
 
+import com.project.playground.auth.chat.ChatTicketRateLimitException;
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
 import com.project.playground.auth.ratelimit.SignUpRateLimitException;
 import com.project.playground.domain.gomoku.service.RoomRateLimitException;
@@ -19,6 +20,12 @@ import java.util.Objects;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 기존 로그인 제한과 같은 Retry-After 계약으로 채팅 접속 재시도 간격을 전달한다.
+    @ExceptionHandler(ChatTicketRateLimitException.class)
+    public ResponseEntity<ProblemDetail> chatTicketRateLimitException(ChatTicketRateLimitException exception) {
+        return rateLimitResponse(exception.getErrorCode(), exception.getRetryAfterSeconds());
+    }
 
     // DTO 필드 검증 실패
     @ExceptionHandler(MethodArgumentNotValidException.class)

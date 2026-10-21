@@ -35,3 +35,11 @@ out/
 
 ### VS Code ###
 .vscode/
+# 실제 로컬 DB 자격 증명·JWT 키를 보존한 local 설정은 버전 관리하지 않는다.
+/src/main/resources/application-local.properties
+/src/main/java/com/project/playground/test/Test.java
+/src/main/java/com/project/playground/test/TestController.java
+/src/main/java/com/project/playground/test/
+# 환경 변수만 참조하는 dev/prod 설정은 Docker 빌드에 필요하므로 버전 관리에 포함한다.
+!/src/main/resources/application-prod.properties
+!/src/main/resources/application-dev.properties

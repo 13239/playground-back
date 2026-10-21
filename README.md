@@ -159,3 +159,13 @@ Spring과 BFF를 함께 배포한다. 기존 키 미등록 세션/쿠키에는 �
 별도 Redis 계정 예산으로 검색 120회/분, 생성 10회/10분, 닫기 30회/분을 허용한다. 초과는 `429 ROOM_RATE_LIMIT_EXCEEDED`와 `Retry-After`, Redis 제한 상태 확인 실패는 `503 ROOM_SERVICE_UNAVAILABLE`다. 일반 로그인 제한과 별도 키를 사용한다. 모든 환경에서 `spring.jpa.open-in-view=false`로 서비스 트랜잭션 밖의 지연 로딩을 막는다.
 
 입장·참가자 관리·빠른 매칭·실시간 대기실·착수·금수 판정·채팅은 이 단계에 구현하지 않는다. 금수 설정과 대국 고정 규칙은 이후 단계에서 사용할 계약으로 보존한다. 관전은 범위에서 제외한다.
+
+## 채팅 2단계: 일회용 접속 증명
+
+`POST /api/chat/tickets`는 기존 BFF 연결 인증·JWT·Redis 세션·브라우저 증명을 모두 통과한 본인에게만 30초짜리 무작위 증명을 발급한다. 닉네임·이미지는 ACTIVE 계정의 실제 프로필에서 읽는다. 로그인 수명을 연장하거나 기존 로그인 키를 변경하지 않는다.
+
+Redis에는 원문 대신 SHA-256 해시를 사용하며 세션 재검증·세션당 미사용 5개·사용자당 분당 30회 제한을 Lua에서 원자적으로 처리한다. 제한 초과는 `429 CHAT_TICKET_RATE_LIMIT_EXCEEDED`와 `Retry-After`다. 증명 기한은 현재 로그인 세션 만료를 넘지 않는다.
+
+local 설정은 `CHAT_WEBSOCKET_URL=ws://localhost:9082/ws/chat`을 기본으로 쓴다. dev/prod는 `APP_ORIGIN`과 같은 공개 호스트의 `/ws/chat`을 사용하고 필요하면 `CHAT_WEBSOCKET_URL`을 공급한다. back과 chat의 공개 Origin·WebSocket 주소는 같아야 한다. 로그인 아이디·장기 토큰·내부 세션 상세를 발급 응답에 넣지 않는다.
+
+접속·브라우저 키·Redis 공유 계약은 [chat 인증 안내](../playground-chat/docs/chat-authentication.md)를 따른다. back과 chat을 재시작하면 새 인증 경로가 적용된다. 게임방 참가 권한과 메시지 처리는 이후 단계에서 연결한다.
