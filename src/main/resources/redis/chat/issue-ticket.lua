@@ -30,9 +30,18 @@ if redis.call('EXISTS', KEYS[4]) == 1 then return {'COLLISION', '0', '0'} end
 
 local expires = math.min(now + tonumber(ARGV[9]), sessionExpiry)
 local ttl = expires - now
+-- 기존 로그인도 최초 발급 이후에는 같은 경계를 사용한다. 세션 TTL·로그인 시각은 변경하지 않는다.
+-- 새 로그인은 create.lua에서 경계를 기록하므로 로그인 이전의 지연 저장 메시지도 공개되지 않는다.
+local started = redis.call('HGET', KEYS[1], 'chatStartedAtMicros')
+if not started then
+    started = string.format('%.0f', tonumber(clock[1]) * 1000000 + tonumber(clock[2]))
+    redis.call('HSET', KEYS[1], 'chatStartedAtMicros', started)
+end
+if not tonumber(started) or tonumber(started) <= 0 then return {'SESSION', '0', '0'} end
 redis.call('HSET', KEYS[4], 'sessionId', ARGV[1], 'userId', ARGV[2],
     'keyThumbprint', ARGV[3], 'nickname', ARGV[5], 'avatarId', ARGV[6],
-    'origin', ARGV[7], 'websocketUrl', ARGV[8], 'issuedAt', tostring(now), 'expiresAt', tostring(expires))
+    'origin', ARGV[7], 'websocketUrl', ARGV[8], 'issuedAt', tostring(now), 'expiresAt', tostring(expires),
+    'chatStartedAtMicros', started)
 redis.call('PEXPIRE', KEYS[4], ttl)
 redis.call('ZADD', KEYS[5], expires, ARGV[4])
 redis.call('PEXPIRE', KEYS[5], tonumber(ARGV[9]))

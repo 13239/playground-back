@@ -155,6 +155,8 @@ redis.call(
     'browserKeyThumbprint', ARGV[16],
     'keepLoggedIn', ARGV[5],
     'createdAt', ARGV[6],
+    -- 홈 채팅 공개 범위는 애플리케이션 시계와 분리한 Redis 접수 시각(마이크로초)으로 고정한다.
+    'chatStartedAtMicros', string.format('%.0f', tonumber(time[1]) * 1000000 + tonumber(time[2])),
     'expiresAt', ARGV[7]
 )
 
