@@ -3,6 +3,7 @@ package com.project.playground.domain.gomoku.controller;
 import com.project.playground.domain.gomoku.dto.request.*;
 import com.project.playground.domain.gomoku.dto.response.*;
 import com.project.playground.domain.gomoku.service.GomokuRoomService;
+import com.project.playground.domain.gomoku.service.GomokuWaitingRoomService;
 import com.project.playground.global.security.session.Session;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,33 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class GomokuRoomController {
     private final GomokuRoomService rooms;
+    private final GomokuWaitingRoomService waiting;
+
+    // 대기실 요청도 기존 BFF·JWT·브라우저 증명과 본인의 로그인 세션을 그대로 사용한다.
+    @PostMapping("/join")
+    public ResponseEntity<WaitingRoomResponse> join(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                                   @Valid @RequestBody JoinRoomRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.join(session.getId(), request));
+    }
+
+    @PostMapping("/state")
+    public ResponseEntity<WaitingRoomResponse> state(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                                    @Valid @RequestBody RoomStateRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.state(session.getId(), request.getRoomId()));
+    }
+
+    @PostMapping("/ready")
+    public ResponseEntity<WaitingRoomResponse> ready(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                                    @Valid @RequestBody ReadyRoomRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.ready(session.getId(), request.getRoomId(), request.getReady()));
+    }
+
+    @PostMapping("/leave")
+    public ResponseEntity<Void> leave(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                      @Valid @RequestBody RoomStateRequest request) {
+        waiting.leave(session.getId(), request.getRoomId());
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
 
     @PostMapping("/search")
     public ResponseEntity<RoomPageResponse> search(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,

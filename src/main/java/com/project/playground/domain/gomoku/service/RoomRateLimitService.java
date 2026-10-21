@@ -26,6 +26,11 @@ public class RoomRateLimitService {
     public void search(Long userId) { acquire(userId, "search", 120, 60_000); }
     public void create(Long userId) { acquire(userId, "create", 10, 600_000); }
     public void close(Long userId) { acquire(userId, "close", 30, 60_000); }
+    // 대기실 조회는 2초 간격 동기화를 허용하고 비밀번호 검증·준비 변경은 별도 예산으로 제한한다.
+    public void state(Long userId) { acquire(userId, "state", 120, 60_000); }
+    public void join(Long userId) { acquire(userId, "join", 20, 300_000); }
+    public void ready(Long userId) { acquire(userId, "ready", 30, 60_000); }
+    public void leave(Long userId) { acquire(userId, "leave", 30, 60_000); }
 
     private void acquire(Long userId, String operation, int limit, long windowMillis) {
         try {

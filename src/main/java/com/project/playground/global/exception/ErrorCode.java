@@ -28,6 +28,15 @@ public enum ErrorCode {
     ROOM_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "방 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     ROOM_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "오목 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
+    // 대기실 상태 충돌은 로그인 만료와 구분하고 다른 계정의 방 정보를 공개하지 않는다.
+    ROOM_ALREADY_JOINED(HttpStatus.CONFLICT, "참여 중인 방이 있습니다. 기존 방에서 나간 뒤 입장해 주세요."),
+    ROOM_FULL(HttpStatus.CONFLICT, "방이 가득 찼습니다. 다른 방을 선택해 주세요."),
+    ROOM_CLOSED(HttpStatus.GONE, "이미 닫힌 방입니다. 다른 방을 선택해 주세요."),
+    ROOM_NOT_JOINED(HttpStatus.CONFLICT, "이 방의 참가자가 아닙니다. 목록에서 다시 입장해 주세요."),
+    ROOM_PASSWORD_REQUIRED(HttpStatus.BAD_REQUEST, "비공개 방 비밀번호를 입력해 주세요."),
+    ROOM_PASSWORD_INVALID(HttpStatus.BAD_REQUEST, "방 비밀번호가 올바르지 않습니다."),
+    ROOM_NOT_FULL(HttpStatus.CONFLICT, "상대가 입장한 뒤 준비해 주세요."),
+
     // 로그인 및 세션 관련 비즈니스 오류
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."),
