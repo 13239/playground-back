@@ -14,8 +14,11 @@ import java.util.Set;
 public class ChatTicketProperties {
 
     public static final long TICKET_TTL_MILLIS = 30_000;
+    // 프로필 조회 전 확보한 자리는 짧게 임대하고, 실제 티켓의 30초 수명은 최종 발급 때 시작한다.
+    public static final long RESERVATION_TTL_MILLIS = 10_000;
     public static final int MAX_PENDING_PER_SESSION = 5;
-    public static final int MAX_ISSUES_PER_MINUTE = 30;
+    // DB 조회까지 허용한 시도를 집계하므로 이후 조회·발급 실패도 이 예산에 포함한다.
+    public static final int MAX_ATTEMPTS_PER_MINUTE = 30;
 
     private final String origin;
     private final String websocketUrl;

@@ -12,10 +12,8 @@ public enum ProfileAvatar {
     PANDA,
     OTTER,
     PENGUIN,
-    // 기존 개구리 선택값은 V3 마이그레이션에서 새 아기 양 식별자로 이전한다.
     SHEEP,
     DUCK,
-    // 기존 회원의 식별자는 유지하고 추가된 다섯 캐릭터도 같은 검증·저장 경로를 사용한다.
     GRAY_CAT,
     RACCOON,
     HAMSTER,

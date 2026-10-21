@@ -26,6 +26,12 @@ public class UserProfileService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND)));
     }
 
+    /** 티켓 예약을 오래 점유하지 않도록 이 경로의 프로필 쿼리에 3초 트랜잭션 예산을 적용한다. */
+    @Transactional(readOnly = true, timeout = 3)
+    public UserProfileResponse getProfileForChatTicket(Long userId) {
+        return getProfile(userId);
+    }
+
     @Transactional
     public UserProfileResponse updateProfile(Long userId, UpdateProfileRequest request) {
         // 계정 비활성화·삭제와 같은 행 잠금을 사용해 오래된 프로필 수정이 계정 상태를 덮어쓰지 않게 한다.

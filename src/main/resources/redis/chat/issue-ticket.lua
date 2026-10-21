@@ -1,6 +1,6 @@
--- 검증된 로그인에서만 30초짜리 증명을 만들며 세션·발급 예산·대기 상한을 원자적으로 확인한다.
--- KEYS: 로그인 Hash, 사용자 세션 ZSET, 계정 차단, 증명 Hash, 세션별 대기 ZSET, 사용자별 발급 예산
--- ARGV: sid, userId, 브라우저 키 지문, 증명 해시, 닉네임, 이미지 ID, Origin, WS URL, TTL(ms), 최대 대기, 분당 발급 수
+-- 검증된 로그인에서만 30초짜리 증명을 만들며 세션·사전 확보한 발급 예약을 원자적으로 확인한다.
+-- KEYS: 로그인 Hash, 사용자 세션 ZSET, 계정 차단, 증명 Hash, 세션별 대기 ZSET
+-- ARGV: sid, userId, 브라우저 키 지문, 증명 해시, 닉네임, 이미지 ID, Origin, WS URL, TTL(ms)
 local fields = redis.call('HMGET', KEYS[1], 'sessionId', 'id', 'username', 'refreshToken',
     'keepLoggedIn', 'createdAt', 'expiresAt', 'browserKeyThumbprint')
 for i = 1, 8 do
@@ -17,13 +17,11 @@ end
 
 -- 사용이 끝난 대기 목록은 정리하되 아직 유효한 증명을 조기 제거하지 않는다.
 redis.call('ZREMRANGEBYSCORE', KEYS[5], '-inf', now)
-if redis.call('ZCARD', KEYS[5]) >= tonumber(ARGV[10]) then
-    local oldest = redis.call('ZRANGE', KEYS[5], 0, 0, 'WITHSCORES')
-    return {'LIMIT', tostring(math.max(1, math.ceil((tonumber(oldest[2]) - now) / 1000))), '0'}
-end
-local used = tonumber(redis.call('GET', KEYS[6]) or '0')
-if used >= tonumber(ARGV[11]) then
-    return {'LIMIT', tostring(math.max(1, math.ceil(redis.call('PTTL', KEYS[6]) / 1000))), '0'}
+-- DB 조회 전 확보한 유효한 자리만 실제 티켓으로 전환한다. 만료된 예약은 소생하지 않는다.
+local reservation = 'reservation:' .. ARGV[4]
+local reservedUntil = tonumber(redis.call('ZSCORE', KEYS[5], reservation))
+if not reservedUntil or reservedUntil <= now then
+    return {'RESERVATION', '0', '0'}
 end
 -- 난수 충돌 시 기존 증명을 덮어쓰지 않는다.
 if redis.call('EXISTS', KEYS[4]) == 1 then return {'COLLISION', '0', '0'} end
@@ -43,8 +41,8 @@ redis.call('HSET', KEYS[4], 'sessionId', ARGV[1], 'userId', ARGV[2],
     'origin', ARGV[7], 'websocketUrl', ARGV[8], 'issuedAt', tostring(now), 'expiresAt', tostring(expires),
     'chatStartedAtMicros', started)
 redis.call('PEXPIRE', KEYS[4], ttl)
+-- 이미 차감한 발급 예산은 다시 차감하지 않고 대기 자리 하나를 그대로 전환한다.
+redis.call('ZREM', KEYS[5], reservation)
 redis.call('ZADD', KEYS[5], expires, ARGV[4])
 redis.call('PEXPIRE', KEYS[5], tonumber(ARGV[9]))
-local count = redis.call('INCR', KEYS[6])
-if count == 1 then redis.call('PEXPIRE', KEYS[6], 60000) end
 return {'OK', tostring(now), tostring(expires)}
