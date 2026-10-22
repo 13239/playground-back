@@ -1,6 +1,7 @@
 package com.project.playground.domain.gomoku.service;
 
 import com.project.playground.domain.gomoku.dto.request.JoinRoomRequest;
+import com.project.playground.domain.gomoku.dto.request.RoomPageRequest;
 import com.project.playground.domain.gomoku.dto.response.WaitingRoomResponse;
 import com.project.playground.domain.gomoku.entity.GomokuRoom;
 import com.project.playground.domain.gomoku.entity.GomokuRoomParticipant;
@@ -20,20 +21,26 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 
 import java.time.Instant;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 방 행 잠금으로 동시 입장·준비·퇴장을 직렬화한다. 이번 단계는 대국 시작이나 흑백 추첨을 수행하지 않는다. */
+/** 방 행 잠금으로 동시 입장·준비·퇴장을 직렬화하고 두 명의 준비 완료를 서버 추첨으로 연결한다. */
 @Service @RequiredArgsConstructor
 // 회원·방 잠금을 기다린 뒤에는 직전 커밋의 참가자를 읽어 MySQL의 이전 스냅샷으로 빈 좌석을 오인하지 않는다.
 @Transactional(timeout = 5, isolation = Isolation.READ_COMMITTED)
 public class GomokuWaitingRoomService {
+    // 새로고침이 참가를 이어받을 짧은 유예다. 일반 뒤로가기·나가기에는 적용하지 않는다.
+    private static final int PAGE_CLOSE_GRACE_SECONDS = 5;
     private final GomokuRoomRepository rooms;
     private final GomokuRoomParticipantRepository participants;
     private final UserRepository users;
     private final PasswordEncoder passwords;
     private final RoomRateLimitService limits;
     private final RoomChatAccessPublisher chatAccess;
+    private final GomokuGameService games;
+    private final GomokuGameEvents events;
+    private final Clock gomokuClock;
 
     public WaitingRoomResponse join(Long userId, JoinRoomRequest request) {
         limits.join(userId);
@@ -57,9 +64,11 @@ public class GomokuWaitingRoomService {
         var existing = members.stream().filter(p -> p.getUser().getId().equals(userId)).findFirst();
         if (existing.isPresent()) {
             existing.get().seen(Instant.now());
-            cleanExpired(room, members, userId);
+            if (room.getStatus() == RoomStatus.WAITING) cleanExpired(room, members, userId);
             return snapshot(room, members, userId);
         }
+        // 이미 참가한 사용자는 진행 중인 판으로 복귀하지만 신규 사용자는 대국에 끼어들 수 없다.
+        if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.ROOM_FULL);
         cleanExpired(room, members, null);
         if (room.getStatus() == RoomStatus.CLOSED) throw failure(ErrorCode.ROOM_CLOSED);
         // 코드만으로 비공개 방의 비밀번호 검증을 건너뛰지 않는다.
@@ -86,12 +95,12 @@ public class GomokuWaitingRoomService {
         var own = requireMember(members, userId);
         Instant now = Instant.now();
         // 오래 멈춘 탭의 준비 상태는 자동 유지하지 않는다. 새로고침은 참가 상태를 복구한다.
-        if (own.isReady() && own.getLastSeenAt().isBefore(now.minusSeconds(30))) {
+        if (room.getStatus() == RoomStatus.WAITING && own.isReady() && own.getLastSeenAt().isBefore(now.minusSeconds(30))) {
             own.ready(false);
             room.participantsChanged(members.size());
         }
         own.seen(now);
-        cleanExpired(room, members, userId);
+        if (room.getStatus() == RoomStatus.WAITING) cleanExpired(room, members, userId);
         return snapshot(room, members, userId);
     }
 
@@ -99,6 +108,7 @@ public class GomokuWaitingRoomService {
         limits.ready(userId);
         activeUser(userId);
         GomokuRoom room = openRoom(roomId);
+        if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.GAME_STATE_CHANGED);
         var members = new ArrayList<>(participants.findMembers(roomId));
         var own = requireMember(members, userId);
         own.seen(Instant.now());
@@ -108,31 +118,84 @@ public class GomokuWaitingRoomService {
             own.ready(ready);
             room.participantsChanged(members.size());
         }
+        games.startIfReady(room, members);
+        events.changed(roomId);
         return snapshot(room, members, userId);
     }
 
-    public void leave(Long userId, Long roomId) {
+    public void leave(Long userId, Long roomId, String membershipId) {
         limits.leave(userId);
         activeUser(userId);
         var found = rooms.findForUpdateById(roomId);
         if (found.isEmpty() || found.get().getStatus() == RoomStatus.CLOSED) return;
         GomokuRoom room = found.get();
-        if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.ROOM_CANNOT_CLOSE);
         var members = new ArrayList<>(participants.findMembers(roomId));
         var own = members.stream().filter(p -> p.getUser().getId().equals(userId)).findFirst();
-        if (own.isEmpty()) return; // 네트워크 재시도의 같은 퇴장은 성공으로 처리한다.
-        participants.delete(own.get());
-        members.remove(own.get());
+        if (own.isEmpty() || !own.get().getMembershipId().equals(membershipId)) return; // 네트워크 재시도의 같은 퇴장은 성공으로 처리한다.
+        removeMember(room, members, own.get());
+    }
+
+    /** CLOSE는 짧게 예약하고 새 문서의 OPEN이 예약을 취소한다. 이전 문서·참가의 늦은 요청은 무시한다. */
+    public void page(Long userId, RoomPageRequest request) {
+        limits.lifecycle(userId);
+        activeUser(userId);
+        var found = rooms.findForUpdateById(request.getRoomId());
+        if (found.isEmpty() || found.get().getStatus() == RoomStatus.CLOSED) return;
+        var room = found.get();
+        var members = new ArrayList<>(participants.findMembers(room.getId()));
+        var own = members.stream().filter(p -> p.getUser().getId().equals(userId)
+                && p.getMembershipId().equals(request.getMembershipId())).findFirst();
+        if (own.isEmpty()) return;
+        var participant = own.get();
+        if (request.getAction() == RoomPageRequest.Action.OPEN) {
+            participant.openPage(request.getPageId());
+        } else if (request.getPageId().equals(participant.getPageId())) {
+            if (request.getAction() == RoomPageRequest.Action.LEAVE) removeMember(room, members, participant);
+            else {
+                participant.closePage(gomokuClock.instant().plusSeconds(PAGE_CLOSE_GRACE_SECONDS));
+                events.clockChanged(room.getId(), participant.getExitDeadline());
+            }
+        }
+    }
+
+    /** 메모리에 예약된 방만 확인한다. 새로고침으로 취소된 예약은 제거하고 대국의 다음 마감과 합친다. */
+    public Instant tick(Long roomId) {
+        var found = rooms.findForUpdateById(roomId);
+        if (found.isEmpty() || found.get().getStatus() == RoomStatus.CLOSED) return null;
+        var room = found.get();
+        var members = new ArrayList<>(participants.findMembers(roomId));
+        Instant now = gomokuClock.instant();
+        var departing = members.stream().filter(p -> p.getExitDeadline() != null && !p.getExitDeadline().isAfter(now)).toList();
+        departing.forEach(p -> removeMember(room, members, p));
+        Instant next = room.getStatus() == RoomStatus.PLAYING ? games.tickLocked(room) : null;
+        for (var participant : members) {
+            Instant deadline = participant.getExitDeadline();
+            if (deadline != null && (next == null || deadline.isBefore(next))) next = deadline;
+        }
+        return next;
+    }
+
+    private void removeMember(GomokuRoom room, List<GomokuRoomParticipant> members, GomokuRoomParticipant own) {
+        games.departed(room, members, own.getUser().getId());
+        participants.delete(own);
+        members.remove(own);
         membershipChanged(room, members);
         chatAccess.changed(room, members);
+        events.changed(room.getId());
     }
 
     /** 아무도 다시 조회하지 않는 방도 정리한다. 후보 조회 뒤 복귀한 참가자는 최신 시각으로 보존한다. */
     public void expire(Long roomId) {
         var found = rooms.findForUpdateById(roomId);
-        if (found.isEmpty() || found.get().getStatus() != RoomStatus.WAITING) return;
+        if (found.isEmpty() || found.get().getStatus() == RoomStatus.CLOSED) return;
         var room = found.get();
         var members = new ArrayList<>(participants.findMembers(roomId));
+        // 종료 요청 자체가 유실된 브라우저도 접속 만료 뒤 참가를 제거한다. 일시적인 대국 단절의 재접속 유예는 유지한다.
+        if (room.getStatus() == RoomStatus.PLAYING) {
+            var expired = members.stream().filter(p -> p.getLastSeenAt().isBefore(gomokuClock.instant().minusSeconds(90))).toList();
+            expired.forEach(p -> removeMember(room, members, p));
+            return;
+        }
         long previous = room.getRevision();
         cleanExpired(room, members, null);
         if (room.getRevision() != previous) chatAccess.changed(room, members);
@@ -140,7 +203,7 @@ public class GomokuWaitingRoomService {
 
     private GomokuRoom openRoom(Long id) {
         var room = rooms.findForUpdateById(id).orElseThrow(() -> failure(ErrorCode.ROOM_NOT_FOUND));
-        if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.ROOM_CLOSED);
+        if (room.getStatus() == RoomStatus.CLOSED) throw failure(ErrorCode.ROOM_CLOSED);
         return room;
     }
 
@@ -179,8 +242,10 @@ public class GomokuWaitingRoomService {
     }
 
     private WaitingRoomResponse snapshot(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer) {
+        // 진행 중에도 참가 조회로 접속과 방 채팅 리스를 함께 유지하며 숨긴 추첨 결과는 공개하지 않는다.
+        var game = games.synchronize(room, members, viewer);
         chatAccess.changed(room, members);
-        return WaitingRoomResponse.from(room, members, viewer);
+        return WaitingRoomResponse.from(room, members, viewer, game, Instant.now());
     }
 
     private BusinessException failure(ErrorCode code) { return new BusinessException(code); }

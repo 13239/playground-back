@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
-/** 강제 종료로 남은 대기실을 작은 배치로 정리하며 다른 인스턴스·입장 요청과 방 행 잠금을 공유한다. */
+/** 강제 종료로 남은 대기실·대국 참가를 작은 배치로 정리하며 다른 인스턴스·입장 요청과 방 행 잠금을 공유한다. */
 @Slf4j @Component @RequiredArgsConstructor
 public class GomokuWaitingRoomCleanup {
     private final GomokuRoomParticipantRepository participants;

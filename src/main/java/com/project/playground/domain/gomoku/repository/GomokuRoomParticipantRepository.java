@@ -20,4 +20,8 @@ public interface GomokuRoomParticipantRepository extends JpaRepository<GomokuRoo
     // 접속 확인 인덱스로 만료 후보만 제한 조회하고 실제 삭제는 방 잠금 안에서 다시 검증한다.
     @Query("select distinct p.room.id from GomokuRoomParticipant p where p.lastSeenAt < :cutoff")
     List<Long> findExpiredRoomIds(Instant cutoff, Pageable page);
+
+    // 종료 예약 복구는 서버 시작·Redis 재구독 때만 읽고, 평상시의 빈 테이블 폴링을 추가하지 않는다.
+    @Query("select p from GomokuRoomParticipant p where p.exitDeadline is not null and p.id > :afterId order by p.id")
+    List<GomokuRoomParticipant> findDepartingAfter(Long afterId, Pageable page);
 }

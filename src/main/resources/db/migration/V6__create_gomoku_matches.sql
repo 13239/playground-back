@@ -1,0 +1,52 @@
+-- 대기실 데이터는 보존하고 대국·착수 이력을 별도로 저장한다. 재시작 후에도 판과 서버 마감 시각을 복원한다.
+CREATE TABLE tbl_gomoku_match (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    room_id BIGINT NOT NULL,
+    round_number INT NOT NULL,
+    user_one_id BIGINT NOT NULL COMMENT '대국 당시 1번 좌석 회원',
+    user_two_id BIGINT NOT NULL COMMENT '대국 당시 2번 좌석 회원',
+    membership_one CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    membership_two CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    phase VARCHAR(12) NOT NULL,
+    black_seat SMALLINT NOT NULL DEFAULT 0,
+    black_card SMALLINT NOT NULL,
+    pick_one SMALLINT NOT NULL DEFAULT -1,
+    pick_two SMALLINT NOT NULL DEFAULT -1,
+    turn_seat SMALLINT NOT NULL DEFAULT 1,
+    turn_number BIGINT NOT NULL DEFAULT 0,
+    deadline DATETIME(6) NULL,
+    seen_one DATETIME(6) NOT NULL,
+    seen_two DATETIME(6) NOT NULL,
+    undo_one SMALLINT NOT NULL DEFAULT 0,
+    undo_two SMALLINT NOT NULL DEFAULT 0,
+    undo_seat SMALLINT NOT NULL DEFAULT 0,
+    undo_deadline DATETIME(6) NULL,
+    winner_seat SMALLINT NOT NULL DEFAULT 0,
+    finish_reason VARCHAR(16) NULL,
+    rematch_one BOOLEAN NOT NULL DEFAULT FALSE,
+    rematch_two BOOLEAN NOT NULL DEFAULT FALSE,
+    request_one VARCHAR(36) NULL,
+    request_two VARCHAR(36) NULL,
+    command_one VARCHAR(100) NULL,
+    command_two VARCHAR(100) NULL,
+    CONSTRAINT fk_gomoku_match_room FOREIGN KEY (room_id) REFERENCES tbl_gomoku_room(id),
+    CONSTRAINT fk_gomoku_match_user_one FOREIGN KEY (user_one_id) REFERENCES tbl_user(id),
+    CONSTRAINT fk_gomoku_match_user_two FOREIGN KEY (user_two_id) REFERENCES tbl_user(id),
+    CONSTRAINT uk_gomoku_match_round UNIQUE (room_id, round_number),
+    CONSTRAINT ck_gomoku_match_phase CHECK (phase IN ('DRAWING', 'REVEAL', 'PLAYING', 'FINISHED')),
+    CONSTRAINT ck_gomoku_match_seat CHECK (black_seat BETWEEN 0 AND 2 AND turn_seat IN (1, 2) AND winner_seat BETWEEN 0 AND 2),
+    INDEX idx_gomoku_match_due (phase, deadline),
+    INDEX idx_gomoku_match_presence (phase, seen_one, seen_two)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='오목 대국과 재대국 이력';
+
+-- ply는 남아 있는 착수 순서다. 무르기가 수락된 경우에만 해당 대국의 뒤쪽 착수를 제거한다.
+CREATE TABLE tbl_gomoku_match_move (
+    match_id BIGINT NOT NULL,
+    ply INT NOT NULL,
+    board_x SMALLINT NOT NULL,
+    board_y SMALLINT NOT NULL,
+    seat SMALLINT NOT NULL,
+    PRIMARY KEY (match_id, ply),
+    CONSTRAINT fk_gomoku_move_match FOREIGN KEY (match_id) REFERENCES tbl_gomoku_match(id),
+    CONSTRAINT ck_gomoku_move_position CHECK (board_x BETWEEN 0 AND 19 AND board_y BETWEEN 0 AND 19 AND seat IN (1, 2))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='오목 착수';

@@ -34,6 +34,10 @@ public class GomokuRoomParticipant {
     private long joinedAtMicros;
     @Column(name = "last_seen_at", nullable = false)
     private Instant lastSeenAt;
+    // 새로고침은 새 페이지가 참가를 이어받으며 이전 페이지의 지연 종료 요청을 무효화한다.
+    @Column(name = "page_id", length = 36, columnDefinition = "char(36)")
+    private String pageId;
+    private Instant exitDeadline;
 
     @Builder
     public GomokuRoomParticipant(GomokuRoom room, User user, short seat, long joinedAtMicros) {
@@ -47,6 +51,16 @@ public class GomokuRoomParticipant {
 
     /** 준비 요청은 토글 대신 원하는 값을 받아 중복 전송에도 같은 결과를 유지한다. */
     public void ready(boolean ready) { this.ready = ready; }
+
+    /** 같은 페이지의 중복 OPEN은 종료 예약을 취소하지 않는다. 새 문서가 열린 경우에만 참가를 이어받는다. */
+    public void openPage(String nextPageId) {
+        if (!nextPageId.equals(pageId)) { pageId = nextPageId; exitDeadline = null; }
+    }
+
+    /** 중복 pagehide가 퇴장 마감을 계속 연장하지 못하게 최초 종료 시각을 유지한다. */
+    public void closePage(Instant deadline) {
+        if (exitDeadline == null || deadline.isBefore(exitDeadline)) exitDeadline = deadline;
+    }
 
     /** 읽기 요청마다 UPDATE하지 않고 15초 이상 지난 접속 확인만 저장한다. */
     public void seen(Instant now) {

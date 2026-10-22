@@ -31,6 +31,11 @@ public class RoomRateLimitService {
     public void join(Long userId) { acquire(userId, "join", 20, 300_000); }
     public void ready(Long userId) { acquire(userId, "ready", 30, 60_000); }
     public void leave(Long userId) { acquire(userId, "leave", 30, 60_000); }
+    // 문서 열기·닫기는 상태 폴링과 별개이며 종료 알림의 중복 전송도 제한한다.
+    public void lifecycle(Long userId) { acquire(userId, "lifecycle", 60, 60_000); }
+    // 착수·추첨·무르기와 스트림 연결은 조회 예산과 분리한다.
+    public void game(Long userId) { acquire(userId, "game", 120, 60_000); }
+    public void events(Long userId) { acquire(userId, "events", 30, 60_000); }
 
     private void acquire(Long userId, String operation, int limit, long windowMillis) {
         try {

@@ -37,6 +37,13 @@ public enum ErrorCode {
     ROOM_PASSWORD_INVALID(HttpStatus.BAD_REQUEST, "방 비밀번호가 올바르지 않습니다."),
     ROOM_NOT_FULL(HttpStatus.CONFLICT, "상대가 입장한 뒤 준비해 주세요."),
 
+    // 대국의 늦은 명령과 금수를 구분해 정상 로그인이나 진행 중인 판을 폐기하지 않는다.
+    GAME_STATE_CHANGED(HttpStatus.CONFLICT, "대국 상태가 변경되었습니다. 현재 판을 확인하고 다시 시도해 주세요."),
+    GAME_NOT_YOUR_TURN(HttpStatus.CONFLICT, "상대의 차례입니다."),
+    GAME_POSITION_OCCUPIED(HttpStatus.CONFLICT, "이미 돌이 놓인 위치입니다."),
+    GAME_FORBIDDEN_MOVE(HttpStatus.CONFLICT, "흑돌의 3·3, 4·4, 장목 금수에는 착수할 수 없습니다."),
+    GAME_UNDO_UNAVAILABLE(HttpStatus.CONFLICT, "현재 무르기를 요청하거나 응답할 수 없습니다."),
+
     // 로그인 및 세션 관련 비즈니스 오류
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."),

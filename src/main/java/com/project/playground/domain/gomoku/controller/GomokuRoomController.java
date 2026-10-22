@@ -42,8 +42,16 @@ public class GomokuRoomController {
 
     @PostMapping("/leave")
     public ResponseEntity<Void> leave(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
-                                      @Valid @RequestBody RoomStateRequest request) {
-        waiting.leave(session.getId(), request.getRoomId());
+                                      @Valid @RequestBody LeaveRoomRequest request) {
+        waiting.leave(session.getId(), request.getRoomId(), request.getMembershipId());
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
+
+    /** 페이지 종료도 일반 퇴장과 같은 JWT·BFF·브라우저 증명으로 검증하고 참가자·페이지를 대조한다. */
+    @PostMapping("/lifecycle")
+    public ResponseEntity<Void> lifecycle(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                          @Valid @RequestBody RoomPageRequest request) {
+        waiting.page(session.getId(), request);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 

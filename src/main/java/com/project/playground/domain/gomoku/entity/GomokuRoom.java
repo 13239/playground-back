@@ -95,4 +95,10 @@ public class GomokuRoom extends TimeEntity {
 
     /** 방장이 퇴장하면 남은 참가자가 방을 이어받으며 방 규칙은 변경하지 않는다. */
     public void transferHost(User successor) { host = successor; }
+
+    /** 추첨·대국·결과 확인 동안 같은 두 참가자의 방을 유지한다. */
+    public void startPlaying() { status = RoomStatus.PLAYING; revision++; }
+
+    /** 대국 참가자가 나간 뒤 남은 참가자가 새 상대를 기다릴 수 있도록 되돌린다. */
+    public void returnToWaiting() { status = RoomStatus.WAITING; revision++; }
 }
