@@ -1,5 +1,6 @@
 package com.project.playground.domain.gomoku.service;
 
+import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.domain.gomoku.dto.request.JoinRoomRequest;
 import com.project.playground.domain.gomoku.dto.request.RoomPageRequest;
 import com.project.playground.domain.gomoku.dto.response.WaitingRoomResponse;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /** 방 행 잠금으로 동시 입장·준비·퇴장을 직렬화하고 두 명의 준비 완료를 서버 추첨으로 연결한다. */
 @Service @RequiredArgsConstructor
@@ -41,6 +43,7 @@ public class GomokuWaitingRoomService {
     private final GomokuGameService games;
     private final GomokuGameEvents events;
     private final Clock gomokuClock;
+    private final RedisSessionRepository sessions;
 
     public WaitingRoomResponse join(Long userId, JoinRoomRequest request) {
         limits.join(userId);
@@ -150,7 +153,7 @@ public class GomokuWaitingRoomService {
     }
 
     /** CLOSE는 짧게 예약하고 새 문서의 OPEN이 예약을 취소한다. 이전 문서·참가의 늦은 요청은 무시한다. */
-    public void page(Long userId, RoomPageRequest request) {
+    public void page(Long userId, UUID loginSessionId, RoomPageRequest request) {
         limits.lifecycle(userId);
         activeUser(userId);
         var found = rooms.findForUpdateById(request.getRoomId());
@@ -162,7 +165,17 @@ public class GomokuWaitingRoomService {
         if (own.isEmpty()) return;
         var participant = own.get();
         if (request.getAction() == RoomPageRequest.Action.OPEN) {
-            if (!participant.openPage(request.getTabId(), request.getPageId(), gomokuClock.instant())) {
+            // 방 잠금을 얻은 뒤 재검증해 인증 필터를 먼저 통과한 이전 로그인의 지연 OPEN을 차단한다.
+            // 클라이언트가 보낸 탭 식별자가 아니라 인증 주체의 세션과 서버의 생성 시각만 신뢰한다.
+            var login = sessions.findBySessionId(loginSessionId, userId)
+                    .orElseThrow(() -> failure(ErrorCode.INVALID_SESSION));
+            String previousLogin = participant.getLoginSessionId();
+            if (previousLogin != null && !previousLogin.equals(loginSessionId.toString())
+                    && sessions.findBySessionId(UUID.fromString(previousLogin), userId).isPresent()) {
+                throw failure(ErrorCode.ROOM_PAGE_IN_USE);
+            }
+            if (!participant.openPage(loginSessionId.toString(), login.getCreatedAt(), request.getTabId(),
+                    request.getPageId(), gomokuClock.instant())) {
                 throw failure(ErrorCode.ROOM_PAGE_IN_USE);
             }
         } else if (request.getPageId().equals(participant.getPageId())) {

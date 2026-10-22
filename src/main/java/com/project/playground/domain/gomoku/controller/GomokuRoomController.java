@@ -51,7 +51,8 @@ public class GomokuRoomController {
     @PostMapping("/lifecycle")
     public ResponseEntity<Void> lifecycle(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                           @Valid @RequestBody RoomPageRequest request) {
-        waiting.page(session.getId(), request);
+        // 페이지 점유의 로그인 식별자는 요청 본문에서 받지 않고 검증된 인증 주체에서 전달한다.
+        waiting.page(session.getId(), session.getSessionId(), request);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 

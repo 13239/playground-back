@@ -51,8 +51,9 @@ public class GomokuRoomQueryRepository {
             // Querydsl의 containsIgnoreCase는 사용자 입력의 LIKE 와일드카드를 이스케이프한다.
             var titleMatches = gomokuRoom.title.containsIgnoreCase(term);
             // ASCII 전용 코드 컬럼에는 유효한 6자리 코드만 비교해 한글 검색의 문자셋 충돌을 피한다.
+            // 입장 검증과 같은 영문·숫자 범위로 검색해 0·1·I·O가 포함된 기존 코드도 조회한다.
             String code = term.toUpperCase(Locale.ROOT);
-            where.and(code.matches("[A-HJ-NP-Z2-9]{6}")
+            where.and(code.matches("[A-Z0-9]{6}")
                     ? titleMatches.or(gomokuRoom.inviteCode.eq(code)) : titleMatches);
         }
         return where;

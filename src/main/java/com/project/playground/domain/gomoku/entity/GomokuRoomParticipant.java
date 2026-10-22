@@ -40,6 +40,9 @@ public class GomokuRoomParticipant {
     // 한 브라우저 탭은 새로고침마다 다른 pageId를 사용하되 같은 tabId로 참가를 이어받는다.
     @Column(name = "tab_id", length = 36, columnDefinition = "char(36)")
     private String tabId;
+    // 서버가 검증한 로그인에 점유를 묶어, 종료 알림이 유실돼도 만료된 로그인에서 새 로그인으로 복귀할 수 있다.
+    @Column(name = "login_session_id", length = 36, columnDefinition = "char(36)")
+    private String loginSessionId;
     private Instant exitDeadline;
 
     @Builder
@@ -57,10 +60,15 @@ public class GomokuRoomParticipant {
 
     /** 같은 페이지의 중복 OPEN도 허용하되, 닫힘 예약은 새 문서의 정상 OPEN에만 취소한다. */
     /** 같은 브라우저 탭의 새 문서는 이전 문서를 교체한다. 다른 탭은 기존 연결이 살아 있으면 입장할 수 없다. */
-    public boolean openPage(String nextTabId, String nextPageId, Instant now) {
-        if (tabId != null && !tabId.equals(nextTabId) && exitDeadline == null
+    public boolean openPage(String nextLoginSessionId, Instant loginCreatedAt, String nextTabId, String nextPageId, Instant now) {
+        // 기존 행은 세션 식별자가 없으므로 마지막 접속 이후 생성된 로그인만 이전 점유를 즉시 이어받는다.
+        // 다른 로그인으로의 인계는 서비스에서 현재 로그인 유효성과 이전 로그인 만료를 확인한 뒤에만 호출한다.
+        boolean newLogin = loginSessionId != null ? !loginSessionId.equals(nextLoginSessionId)
+                : lastSeenAt.isBefore(loginCreatedAt);
+        if (!newLogin && tabId != null && !tabId.equals(nextTabId) && exitDeadline == null
                 && !lastSeenAt.isBefore(now.minusSeconds(90))) return false;
         // 응답 유실로 동일 OPEN을 재시도해도 다른 탭으로 판단하지 않는다.
+        loginSessionId = nextLoginSessionId;
         tabId = nextTabId;
         pageId = nextPageId;
         exitDeadline = null;

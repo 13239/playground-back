@@ -12,7 +12,8 @@ import lombok.extern.jackson.Jacksonized;
 @Getter @Builder @Jacksonized
 public class JoinRoomRequest {
     @Positive private final Long roomId;
-    @Pattern(regexp = "[A-HJ-NP-Z2-9]{6}") private final String inviteCode;
+    // 생성 코드의 혼동 문자 제외 규칙을 입력 제한으로 쓰지 않고 BFF와 동일한 영문·숫자 6자리를 검증한다.
+    @Pattern(regexp = "[A-Z0-9]{6}") private final String inviteCode;
     @Size(max = 8) private final String password;
 
     @AssertTrue(message = "방 번호 또는 초대 코드 중 하나를 지정해 주세요.")
