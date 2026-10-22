@@ -24,6 +24,11 @@ public class LoginRequest {
     @NotNull(message = "로그인 유지 여부는 필수입니다.")
     private final Boolean keepLoggedIn;
 
+    // 첫 시도는 기존 로그인을 유지한다. 사용자가 안내를 확인한 재요청에서만 다른 세션을 종료한다.
+    @Builder.Default
+    @NotNull(message = "기존 로그인 교체 여부를 확인해 주세요.")
+    private final Boolean replaceExistingSession = false;
+
     // BFF가 기존 암호화 쿠키에서 읽은 교체 증명. 없거나 이미 종료된 세션이면 신규 로그인으로 처리한다.
     @Size(max = JwtRefreshTokenService.MAX_TOKEN_LENGTH, message = "기존 세션 교체 증명이 너무 깁니다.")
     @Pattern(regexp = JwtRefreshTokenService.TOKEN_PATTERN, message = "기존 세션 교체 증명 형식이 올바르지 않습니다.")

@@ -102,13 +102,14 @@ public class AuthService {
         LoginResponse candidate = createLoginResponse(accessToken, refreshToken, keepLoggedIn, expiresAt, proof.getKeyThumbprint());
 
         /*
-         * 기존 세션 교체 후 동시 로그인 최대 3개 제한이 적용된다.
+         * 계정당 로그인은 하나만 허용하며 다른 세션의 종료는 사용자가 교체에 동의한 경우에만 수행한다.
          *
          * 계정이 차단된 경우 Redis에서 세션을 생성하지 않고 빈 결과를 반환하므로 로그인 요청을 거부한다.
          *
-         * 차단 여부 확인, 기존 세션 교체, 세션 생성과 중복 결과 공유는 Lua Script에서 원자적으로 처리한다.
+         * 차단·중복 확인, 교체 동의 확인, 기존 세션 교체, 세션 생성과 중복 결과 공유는 Lua Script에서 원자적으로 처리한다.
          */
-        String encryptedResult = redisSessionRepository.create(session, replacement, authResultCipher.encrypt(candidate, resultContext))
+        String encryptedResult = redisSessionRepository.create(session, replacement,
+                        authResultCipher.encrypt(candidate, resultContext), Boolean.TRUE.equals(request.getReplaceExistingSession()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         // 동시 요청은 먼저 성공한 한 번의 결과를 받으며 각자 새 세션을 만들지 않는다.

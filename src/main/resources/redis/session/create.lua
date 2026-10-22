@@ -29,12 +29,20 @@ local resultKey = KEYS[6]
 -- ARGV[14]: 기존 갱신 식별자 해시 (없으면 빈 문자열)
 -- ARGV[15]: 세션별 갱신 결과 Key 접두사
 -- ARGV[16]: 로그인에서 소유를 증명한 브라우저 공개키 지문. dev HTTP 예외는 공개키와 구분한 dev-http 표시
+-- ARGV[17]: 사용자가 다른 로그인 종료에 동의했는지 여부 (true / false)
 
 local sessionId = ARGV[1]
 local expiresAt = tonumber(ARGV[7])
-local maxSessions = 3
+-- 사용자별 로그인은 하나만 허용하며 교체에는 명시적인 동의가 필요하다.
+local maxSessions = 1
 local previousSessionId = ARGV[9]
 local resultMillis = tonumber(ARGV[13])
+local replaceExistingSession = ARGV[17] == 'true'
+
+-- 누락되거나 잘못된 동의 값으로 기존 세션을 변경하지 않는다.
+if ARGV[17] ~= 'true' and ARGV[17] ~= 'false' then
+    return redis.error_reply('Invalid login replacement consent')
+end
 
 -- 잘못된 공유 기간으로 세션을 먼저 변경하지 않는다.
 if not resultMillis or resultMillis < 1 or resultMillis > 60000 then
@@ -81,6 +89,9 @@ end
 
 -- 세션 ID만으로 삭제하지 않는다. 기존 토큰 해시·소유자·만료·목록을 검증한 뒤 같은 Lua에서 교체한다.
 -- 다른 계정으로 로그인하더라도 이 브라우저가 증명한 이전 세션 하나만 종료한다.
+-- 이 단계에서는 삭제하지 않고 교체 가능한 항목만 확인해 취소 시 기존 로그인을 보존한다.
+local previousMember = nil
+local previousInSameBrowser = false
 if previousSessionId ~= '' then
     local previous = redis.call('HMGET', previousSessionKey, 'sessionId', 'id', 'refreshToken', 'expiresAt', 'browserKeyThumbprint')
     local matchesToken = previous[3] and previous[3] == ARGV[11]
@@ -95,10 +106,12 @@ if previousSessionId ~= '' then
             -- dev-http는 공개키가 아니므로 같은 값이라도 기존 브라우저의 소유 증명으로 사용하지 않는다.
             and (previous[2] == ARGV[2] or previous[5] == ARGV[16] and ARGV[16] ~= 'dev-http')
             and tonumber(previous[4]) and tonumber(previous[4]) > now then
-        local previousMember = previousSessionId .. '|' .. previous[4]
-        if redis.call('ZSCORE', previousUserSessionsKey, previousMember) then
-            redis.call('ZREM', previousUserSessionsKey, previousMember)
-            redis.call('DEL', previousSessionKey, KEYS[7])
+        local candidateMember = previousSessionId .. '|' .. previous[4]
+        if redis.call('ZSCORE', previousUserSessionsKey, candidateMember) then
+            previousMember = candidateMember
+            -- 같은 계정 비밀번호·쿠키만으로 다른 브라우저의 로그인 종료 동의를 생략하지 않는다.
+            -- dev-http 표시는 브라우저를 식별하지 못하므로 같은 값이어도 별도 로그인으로 확인한다.
+            previousInSameBrowser = previous[5] == ARGV[16] and ARGV[16] ~= 'dev-http'
         end
     end
 end
@@ -115,10 +128,26 @@ for _, member in ipairs(members) do
     end
 end
 
--- 이미 세 개가 있다면 가장 오래된 세션을 목록에서 제거
+-- 같은 브라우저의 검증된 이전 세션을 제외하고 다른 유효 로그인이 있으면 먼저 동의를 요청한다.
+-- 확인과 삭제·등록이 같은 Lua 안에서 실행되므로 동시에 처음 로그인해도 하나만 성공한다.
+local otherSessions = redis.call('ZCARD', userSessionsKey)
+if previousMember and previousInSameBrowser and previousUserSessionsKey == userSessionsKey then
+    otherSessions = otherSessions - 1
+end
+if otherSessions > 0 and not replaceExistingSession then
+    return 'CONFIRMATION_REQUIRED'
+end
+
+-- 다른 로그인 교체가 승인되었거나 다른 유효 세션이 없는 경우에만 이전 세션을 실제로 종료한다.
+if previousMember then
+    redis.call('ZREM', previousUserSessionsKey, previousMember)
+    redis.call('DEL', previousSessionKey, KEYS[7])
+end
+
+-- 기존 정책에서 여러 세션이 남았어도 모두 정리한 뒤 새 로그인 하나만 등록한다.
 local evictedSessionId = ''
 
-if redis.call('ZCARD', userSessionsKey) >= maxSessions then
+while redis.call('ZCARD', userSessionsKey) >= maxSessions do
     local oldest = redis.call('ZRANGE', userSessionsKey, 0, 0)[1]
 
     if oldest then

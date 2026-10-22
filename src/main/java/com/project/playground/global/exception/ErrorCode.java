@@ -64,6 +64,9 @@ public enum ErrorCode {
     CHAT_TICKET_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "채팅 접속 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     CHAT_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "채팅 서비스를 일시적으로 이용할 수 없습니다."),
 
+    // 비밀번호 인증 후 다른 로그인이 확인되면 세션을 유지한 채 사용자에게 교체 동의를 요청한다.
+    LOGIN_CONFIRMATION_REQUIRED(HttpStatus.CONFLICT, "이미 다른 곳에서 로그인되어 있습니다. 기존 로그인을 종료하고 계속할지 선택해 주세요."),
+
     // 같은 이전 세션으로 다른 로그인 조건을 동시에 적용하거나 이미 다음 인증 변경이 끝난 경우
     LOGIN_SESSION_CHANGED(HttpStatus.CONFLICT, "다른 요청에서 로그인 상태가 변경되었습니다. 다시 로그인해 주세요."),
 
