@@ -12,7 +12,8 @@ import lombok.extern.jackson.Jacksonized;
 public class RoomPageRequest {
     public enum Action { OPEN, CLOSE, LEAVE }
     @NotNull @Positive private final Long roomId;
-    @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")
+    // 기존 DB 이전의 UUID(v1)와 신규 참가 UUID(v4)를 모두 받아 조회 성공 후 OPEN이 거절되지 않게 한다.
+    @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")
     private final String membershipId;
     @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")
     private final String pageId;
