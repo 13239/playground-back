@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
 public class ActivityLogger {
 
     // BFF가 브라우저의 User-Agent만 담아 보내는 전용 헤더. BFF 서버 자신의 User-Agent와 구분한다.
-    public static final String USER_AGENT_HEADER = "X-Client-User-Agent";
+    private static final String USER_AGENT_HEADER = "X-Client-User-Agent";
 
     private static final int USER_AGENT_MAX_LENGTH = 255;
 
@@ -40,17 +40,9 @@ public class ActivityLogger {
 
     private final LoginClientIpResolver clientIpResolver;
 
-    public void success(ActivityType type, @Nullable Long userId) {
-        success(type, userId, Map.of());
-    }
-
     // detail에는 관리자 화면에 필요한 값만 넣는다. 요청 DTO·비밀번호·토큰은 넣지 않는다.
     public void success(ActivityType type, @Nullable Long userId, Map<String, ?> detail) {
         publish(type, ActivityResult.SUCCESS, userId, null, detail);
-    }
-
-    public void failure(ActivityType type, @Nullable Long userId, ErrorCode failureCode) {
-        failure(type, userId, failureCode, Map.of());
     }
 
     // 실패 원인은 클라이언트 응답과 같은 ErrorCode 이름으로 남긴다. detail 작성 기준은 성공 로그와 같다.
