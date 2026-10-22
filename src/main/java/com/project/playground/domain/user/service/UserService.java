@@ -1,6 +1,8 @@
 package com.project.playground.domain.user.service;
 
 import com.project.playground.auth.repository.RedisSessionRepository;
+import com.project.playground.domain.activitylog.enums.ActivityType;
+import com.project.playground.domain.activitylog.service.ActivityLogger;
 import com.project.playground.domain.user.dto.request.SignUpRequest;
 import com.project.playground.domain.user.entity.User;
 import com.project.playground.domain.user.enums.UserStatus;
@@ -19,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Locale;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -34,10 +37,13 @@ public class UserService {
 
     private final RedisSessionRepository redisSessionRepository;
 
+    // 가입 성공은 커밋 후, 실패는 롤백 후 저장되도록 활동 로그 리스너가 시점을 맞춘다.
+    private final ActivityLogger activityLogger;
+
     @Transactional
     public void signUp(SignUpRequest request) {
         if (userReader.existsByUsername(request.getUsername())) {
-            throw new BusinessException(ErrorCode.DUPLICATE_USERNAME);
+            throw duplicateUsername(request);
         }
 
         User user = User.builder()
@@ -57,10 +63,23 @@ public class UserService {
         } catch (DataIntegrityViolationException e) {
             // 기존 DDL의 username 제약과 신규 명시 이름만 중복 아이디로 변환한다. 다른 무결성 오류는 숨기지 않는다.
             if (isDuplicateUsername(e)) {
-                throw new BusinessException(ErrorCode.DUPLICATE_USERNAME);
+                throw duplicateUsername(request);
             }
             throw e;
         }
+
+        activityLogger.success(ActivityType.SIGN_UP, user.getId(), signUpDetail(request));
+    }
+
+    // 중복 아이디 실패를 입력한 아이디·닉네임과 함께 기록한 뒤 응답 예외를 만든다.
+    private BusinessException duplicateUsername(SignUpRequest request) {
+        activityLogger.failure(ActivityType.SIGN_UP, null, ErrorCode.DUPLICATE_USERNAME, signUpDetail(request));
+        return new BusinessException(ErrorCode.DUPLICATE_USERNAME);
+    }
+
+    // 가입 시 입력한 아이디·닉네임만 남기며 비밀번호와 선택 입력 개인정보(이메일·연락처 등)는 남기지 않는다.
+    private static Map<String, Object> signUpDetail(SignUpRequest request) {
+        return Map.of("username", request.getUsername(), "nickname", request.getNickname());
     }
 
     // MySQL이 제공하는 테이블 접두사·따옴표를 제거하되 오류 메시지나 입력값으로 중복 여부를 추측하지 않는다.

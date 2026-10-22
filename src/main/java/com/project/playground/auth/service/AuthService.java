@@ -2,6 +2,7 @@ package com.project.playground.auth.service;
 
 import com.project.playground.auth.crypto.AuthResultCipher;
 import com.project.playground.auth.proof.BrowserProof;
+import com.project.playground.auth.dto.internal.LoginRateLimitAttempt;
 import com.project.playground.auth.dto.internal.LoginSessionReplacement;
 import com.project.playground.auth.dto.request.LoginRequest;
 import com.project.playground.auth.dto.request.RefreshRequest;
@@ -10,14 +11,18 @@ import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.ratelimit.LoginRateLimitService;
 import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.auth.session.SessionExpirationPolicy;
+import com.project.playground.domain.activitylog.enums.ActivityType;
+import com.project.playground.domain.activitylog.service.ActivityLogger;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import com.project.playground.global.security.CustomUserDetails;
+import com.project.playground.global.security.LoginUserDetailsLookup;
 import com.project.playground.global.security.jwt.JwtRefreshTokenService;
 import com.project.playground.global.security.jwt.JwtTokenService;
 import com.project.playground.global.security.session.RedisSession;
 import com.project.playground.global.security.session.Session;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -30,6 +35,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -53,10 +59,46 @@ public class AuthService {
     // 동시 재로그인에서도 같은 토큰을 반환하도록 로그인 결과를 짧게 암호화해 공유한다.
     private final AuthResultCipher authResultCipher;
 
+    // 활동 로그 저장은 비동기로 처리되어 로그 저장 실패나 지연이 로그인 응답에 영향을 주지 않는다.
+    private final ActivityLogger activityLogger;
+
+    // 로그인 제한 단계에서 조회한 요청별 계정 정보를 활동 로그에 재사용하여 DB를 다시 조회하지 않는다.
+    private final LoginUserDetailsLookup loginUserDetailsLookup;
+
     public LoginResponse login(LoginRequest request, String clientIp, BrowserProof proof) {
         // 인증 시도 횟수를 먼저 증가시켜 동시 요청도 제한에 포함한다.
         var loginAttempt = loginRateLimitService.beforeLogin(request.getUsername(), clientIp);
 
+        CustomUserDetails account = loginUserDetailsLookup.findByUsername(request.getUsername()).orElse(null);
+        Long userId = account == null ? null : account.getId();
+        Map<String, Object> detail = loginDetail(request, account);
+
+        try {
+            LoginResponse response = authenticateAndCreateSession(request, proof, loginAttempt);
+
+            // 비밀번호 인증과 세션 생성까지 끝난 로그인만 성공으로 기록한다.
+            activityLogger.success(ActivityType.LOGIN, userId, detail);
+
+            return response;
+        } catch (BusinessException e) {
+            // 요청 제한을 통과한 시도의 실패만 기록한다. 제한 초과 요청까지 기록하면 공격 요청 수만큼 로그 테이블이 늘어난다.
+            activityLogger.failure(ActivityType.LOGIN, userId, e.getErrorCode(), detail);
+            throw e;
+        }
+    }
+
+    // 로그인 시 입력한 아이디·로그인 유지 여부와 해당 계정의 닉네임을 남긴다. 비밀번호와 교체 증명은 남기지 않는다.
+    private static Map<String, Object> loginDetail(LoginRequest request, @Nullable CustomUserDetails account) {
+        // 미등록 아이디는 닉네임을 알 수 없으므로 입력한 아이디만 남긴다.
+        if (account == null) {
+            return Map.of("username", request.getUsername(), "keepLoggedIn", request.getKeepLoggedIn());
+        }
+
+        return Map.of("username", request.getUsername(), "nickname", account.getNickname(), "keepLoggedIn", request.getKeepLoggedIn());
+    }
+
+    // 비밀번호 인증 후 Redis 로그인 세션을 생성하고 토큰을 발급한다.
+    private LoginResponse authenticateAndCreateSession(LoginRequest request, BrowserProof proof, LoginRateLimitAttempt loginAttempt) {
         Authentication authentication;
 
         try {
