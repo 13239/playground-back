@@ -65,13 +65,13 @@ Docker/JAR 배포에서는 첫 실행에만 `SPRING_FLYWAY_BASELINE_ON_MIGRATE=t
 
 Spring에는 `SPRING_PROFILES_ACTIVE=dev`, BFF에는 `APP_ENV=dev`를 지정한다. Next는 개발 서버에서도 `next build` 후 `next start`로 실행하며 `NODE_ENV=dev`로 설정하지 않는다.
 
-사용자에게 주는 `http://123.234.123.222:9081`은 **사이트의 공개 주소**다. 호스트 9081 → Nginx → 프론트/BFF 3000 → Spring 9080으로 연결한다. BFF의 `BACKEND_ORIGIN`은 `http://backend:9080`이다. Nginx가 실제 접속 IP를 덮어써 전달하고 Spring은 고정된 BFF 내부 IP만 신뢰한다. 기존 개발 서버의 MySQL·Redis에 연결하는 이미지 묶음을 PC에서 만들고 서버에서 직접 실행한다. 순서는 [Linux 직접 배포 안내](../deploy/README.md)를 따른다. 앱 포트는 호스트에 공개하지 않고 기존 DB 연결은 서버의 3306·6379를 사용한다.
+사용자에게 주는 `http://121.182.203.136:9081`은 **사이트의 공개 주소**다. 호스트 9081 → Nginx → 프론트/BFF 3000 → Spring 9080으로 연결한다. BFF의 `BACKEND_ORIGIN`은 `http://backend:9080`이다. Nginx가 실제 접속 IP를 덮어써 전달하고 Spring은 고정된 BFF 내부 IP만 신뢰한다. 기존 개발 서버의 MySQL·Redis에 연결하는 이미지 묶음을 PC에서 만들고 서버에서 직접 실행한다. 순서는 [Linux 직접 배포 안내](../deploy/README.md)를 따른다. 앱 포트는 호스트에 공개하지 않고 기존 DB 연결은 서버의 3306·6379를 사용한다.
 
 dev 필수 환경 변수는 다음과 같다.
 
 | 설정 | 대상·용도 |
 | --- | --- |
-| `APP_ORIGIN=http://123.234.123.222:9081` | Spring·BFF 공통. 실제 공개 IP/포트와 일치 |
+| `APP_ORIGIN=http://121.182.203.136:9081` | Spring·BFF 공통. 실제 공개 IP/포트와 일치 |
 | `BFF_DEV_SHARED_SECRET` | Spring·BFF 공통. JWT·쿠키 키와 다른 무작위 32바이트 Base64 |
 | `JWT_SECRET` | Spring 전용. 로컬·운영과 다른 무작위 32바이트 이상 Base64 |
 | `AUTH_COOKIE_SECRET` | BFF 전용. 무작위 32바이트 Base64 |
