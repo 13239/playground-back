@@ -106,8 +106,15 @@ public class GomokuRoomService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
         if (room.getStatus() == RoomStatus.CLOSED) return;
         if (room.getStatus() != RoomStatus.WAITING || room.getPlayerCount() != 1) throw new BusinessException(ErrorCode.ROOM_CANNOT_CLOSE);
+        // 로비의 다른 탭에서 방을 닫더라도 현재 대기 중인 활성 탭의 소유권을 무시하지 않는다.
+        // 방 화면에 접속하기 전에는 pageId가 없어 기존 방 닫기 흐름을 유지한다.
+        var members = participants.findMembers(roomId);
+        if (members.stream().anyMatch(member -> member.getPageId() != null && member.getExitDeadline() == null
+                && !member.getLastSeenAt().isBefore(java.time.Instant.now().minusSeconds(90)))) {
+            throw new BusinessException(ErrorCode.ROOM_PAGE_IN_USE);
+        }
         // 기존 빈 방 닫기도 새 대기실 참가·채팅 권한을 함께 회수한다.
-        participants.deleteAll(participants.findMembers(roomId));
+        participants.deleteAll(members);
         room.close();
         chatAccess.changed(room, List.of());
     }

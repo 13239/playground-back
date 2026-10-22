@@ -29,7 +29,10 @@ public class GomokuGameController {
     public ResponseEntity<SseEmitter> events(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                              @Valid @RequestBody RoomStateRequest request) {
         limits.events(session.getId());
-        waiting.state(session.getId(), request.getRoomId());
+        // 소유하지 않은 탭은 SSE 구독을 만들거나 게임 접속 시간을 갱신할 수 없다.
+        if (request.getPageId() == null) throw new com.project.playground.global.exception.BusinessException(
+                com.project.playground.global.exception.ErrorCode.ROOM_PAGE_IN_USE);
+        waiting.state(session.getId(), request.getRoomId(), request.getPageId());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("X-Accel-Buffering", "no")
                 .body(events.subscribe(session.getId(), request.getRoomId()));
     }

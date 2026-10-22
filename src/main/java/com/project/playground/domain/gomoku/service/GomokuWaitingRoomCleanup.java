@@ -17,7 +17,8 @@ public class GomokuWaitingRoomCleanup {
 
     @Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
     public void clean() {
-        for (Long roomId : participants.findExpiredRoomIds(Instant.now().minusSeconds(90), PageRequest.of(0, 100))) {
+        for (Long roomId : participants.findExpiredRoomIds(Instant.now().minusSeconds(90), Instant.now().minusSeconds(180),
+                com.project.playground.domain.gomoku.enums.RoomStatus.PLAYING, PageRequest.of(0, 100))) {
             try { waiting.expire(roomId); }
             catch (RuntimeException exception) {
                 // 한 방의 잠금 경합·DB 장애가 나머지 정리나 다음 주기를 중단하지 않게 한다.

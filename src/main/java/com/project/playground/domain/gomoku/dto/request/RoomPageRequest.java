@@ -16,5 +16,8 @@ public class RoomPageRequest {
     private final String membershipId;
     @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")
     private final String pageId;
+    // 탭 단위 식별자는 새로고침 사이에 유지하되 문서마다 별도 pageId로 종료 신호를 구분한다.
+    @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")
+    private final String tabId;
     @NotNull private final Action action;
 }

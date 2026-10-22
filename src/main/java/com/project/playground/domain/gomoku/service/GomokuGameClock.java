@@ -18,8 +18,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.Instant;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.PriorityQueue;
 
 /** 브라우저가 멈춰도 서버가 패스·추첨 마감·접속 종료를 반영한다. 여러 서버의 실행은 방 잠금으로 합쳐진다.
  * 활성 판·페이지 종료의 마감만 메모리에 예약해 빈 대국·참가 테이블을 매초 조회하지 않는다. */
@@ -29,7 +31,10 @@ public class GomokuGameClock implements MessageListener, SubscriptionListener {
     private final GomokuRoomParticipantRepository participants;
     private final GomokuWaitingRoomService waiting;
     private final Clock gomokuClock;
-    private final ConcurrentMap<Long, Instant> deadlines = new ConcurrentHashMap<>();
+    // 다음 마감만 우선순위 큐에서 조회한다. 활성 방 수가 증가해도 매초 전체 방을 순회하지 않는다.
+    private final Object scheduleLock = new Object();
+    private final Map<Long, Due> deadlines = new HashMap<>();
+    private final PriorityQueue<Due> dueQueue = new PriorityQueue<>((a, b) -> a.at.compareTo(b.at));
     private volatile boolean ready;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -80,25 +85,45 @@ public class GomokuGameClock implements MessageListener, SubscriptionListener {
 
     private void schedule(Long roomId, Instant deadline) {
         // 지연·역순 알림은 마감을 늦추거나 새 재대국 예약을 없애지 못한다. 조기 확인 시 DB의 최신 마감으로 다시 예약한다.
-        Instant due = deadline == null ? gomokuClock.instant() : deadline;
-        deadlines.merge(roomId, due, (current, incoming) -> current.isBefore(incoming) ? current : incoming);
+        // Redis 알림은 역순 도착할 수 있다. 더 늦은 마감으로 기존 예약을 덮지 않고 DB에서 정확한 상태를 다시 확인한다.
+        Instant dueAt = deadline == null ? gomokuClock.instant() : deadline;
+        synchronized (scheduleLock) {
+            Due previous = deadlines.get(roomId);
+            if (previous != null && !dueAt.isBefore(previous.at)) return;
+            Due next = new Due(roomId, dueAt);
+            deadlines.put(roomId, next);
+            dueQueue.offer(next);
+            // 앞당겨진 이전 예약은 큐에 남을 수 있지만 꺼낼 때 객체 식별자로 무시한다.
+        }
     }
 
     @Scheduled(fixedDelay = 1000, initialDelay = 1000)
     public void tick() {
-        if (deadlines.isEmpty()) return;
         Instant now = gomokuClock.instant();
-        var due = deadlines.entrySet().stream().filter(entry -> !entry.getValue().isAfter(now)).limit(100).toList();
-        for (var entry : due) {
-            if (!deadlines.remove(entry.getKey(), entry.getValue())) continue;
-            try {
-                Instant next = waiting.tick(entry.getKey());
-                if (next != null) schedule(entry.getKey(), next);
-            } catch (RuntimeException exception) {
-                // 한 방의 장애는 나머지 예약을 막지 않는다. 실패한 방만 재시도하며 빈 테이블을 조회하지 않는다.
-                schedule(entry.getKey(), now.plusSeconds(5));
-                log.warn("오목 대국 시각을 반영하지 못했습니다. roomId={}", entry.getKey(), exception);
+        var due = new ArrayList<Long>(100);
+        synchronized (scheduleLock) {
+            while (!dueQueue.isEmpty() && due.size() < 100 && !dueQueue.peek().at.isAfter(now)) {
+                Due next = dueQueue.poll();
+                if (deadlines.remove(next.roomId, next)) due.add(next.roomId);
             }
         }
+        // SQL 트랜잭션 및 잠금은 메모리 스케줄러의 잠금 밖에서 실행한다.
+        for (Long roomId : due) {
+            try {
+                Instant next = waiting.tick(roomId);
+                if (next != null) schedule(roomId, next);
+            } catch (RuntimeException exception) {
+                // 한 방의 장애는 나머지 예약을 막지 않는다. 실패한 방만 재시도하며 빈 테이블을 조회하지 않는다.
+                // 한 방의 장애는 나머지 마감을 막지 않는다. 실패한 방만 지수적 전역 조회 없이 재시도한다.
+                schedule(roomId, now.plusSeconds(5));
+                log.warn("오목 대국 시각을 반영하지 못했습니다. roomId={}", roomId, exception);
+            }
+        }
+    }
+
+    private static final class Due {
+        private final Long roomId;
+        private final Instant at;
+        private Due(Long roomId, Instant at) { this.roomId = roomId; this.at = at; }
     }
 }

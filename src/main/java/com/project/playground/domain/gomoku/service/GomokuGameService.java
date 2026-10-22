@@ -21,9 +21,10 @@ import java.util.List;
 @Service @RequiredArgsConstructor
 @Transactional(timeout = 5, isolation = Isolation.READ_COMMITTED)
 public class GomokuGameService {
+    // 모바일 백그라운드 일시 정지를 고려해 접속 복구 시간을 150초 확보한다. 브라우저의 5회 재시도도 포함한다.
     // 브라우저의 5회 재시도(1·2·4·8·10초 간격, 요청당 5초)와 끊김 감지 시간을 포함한다.
     // 실패한 네트워크 요청은 서버에 도착하지 않으므로 닫힌 브라우저도 정리할 서버 마감이 별도로 필요하다.
-    public static final int DISCONNECT_SECONDS = 65;
+    public static final int DISCONNECT_SECONDS = 150;
     private static final SecureRandom RANDOM = new SecureRandom();
     private final GomokuRoomRepository rooms;
     private final GomokuRoomParticipantRepository participants;
@@ -59,15 +60,17 @@ public class GomokuGameService {
         if (members.size() != 2 || !member(members, (short) 1).getMembershipId().equals(match.getMembershipOne())
                 || !member(members, (short) 2).getMembershipId().equals(match.getMembershipTwo())) throw failure(ErrorCode.GAME_STATE_CHANGED);
         Instant now = gomokuClock.instant();
+        Instant previousDeadline = match.nextDeadline(DISCONNECT_SECONDS);
         boolean advanced = advance(match, now);
         if (advanced) touch(room);
+        boolean seenUpdated = false;
         if (viewer != null && match.getPhase() != GomokuMatch.Phase.FINISHED) {
             short seat = own(members, viewer).getSeat();
             Instant seen = seat == 1 ? match.getSeenOne() : match.getSeenTwo();
-            if (seen.isBefore(now.minusSeconds(3))) match.seen(seat, now);
+            if (seen.isBefore(now.minusSeconds(3))) { match.seen(seat, now); seenUpdated = true; }
         }
         // 조회·접속 갱신도 커밋된 마감으로 예약한다. 판이 없는 동안의 DB 폴링은 하지 않는다.
-        if (advanced || match.getPhase() != GomokuMatch.Phase.FINISHED) events.clockChanged(match);
+        if (advanced || seenUpdated && !previousDeadline.equals(match.nextDeadline(DISCONNECT_SECONDS))) events.clockChanged(match);
         return match;
     }
 
@@ -75,13 +78,22 @@ public class GomokuGameService {
         limits.game(userId);
         var room = rooms.findForUpdateById(request.getRoomId()).orElseThrow(() -> failure(ErrorCode.ROOM_NOT_FOUND));
         var members = participants.findMembers(room.getId());
-        short seat = own(members, userId).getSeat();
+        var own = own(members, userId);
+        if (!own.ownsPage(request.getPageId())) throw failure(ErrorCode.ROOM_PAGE_IN_USE);
+        short seat = own.getSeat();
         var match = synchronize(room, members, userId);
         if (match == null || !match.getId().equals(request.getMatchId())) throw failure(ErrorCode.GAME_STATE_CHANGED);
         String fingerprint = request.fingerprint();
         if (match.repeated(seat, request.getRequestId())) {
             if (!fingerprint.equals(match.previousCommand(seat))) throw failure(ErrorCode.GAME_STATE_CHANGED);
-            return snapshot(room, members, userId, match);
+            return WaitingRoomResponse.from(room, members, userId, match, gomokuClock.instant());
+        }
+        // 이미 완료된 대국에 대한 기권/단절과 같은 참가자의 중복 재대국 요청은 수정·이벤트 없이 성공한다.
+        if ((match.getPhase() == GomokuMatch.Phase.FINISHED
+                && (request.getAction() == GameActionRequest.Action.RESIGN || request.getAction() == GameActionRequest.Action.DISCONNECT))
+                || (request.getAction() == GameActionRequest.Action.REMATCH && match.getPhase() == GomokuMatch.Phase.FINISHED
+                    && (seat == 1 ? match.isRematchOne() : match.isRematchTwo()))) {
+            return WaitingRoomResponse.from(room, members, userId, match, gomokuClock.instant());
         }
         if (room.getRevision() != request.getRevision()) throw failure(ErrorCode.GAME_STATE_CHANGED);
         Instant now = gomokuClock.instant();

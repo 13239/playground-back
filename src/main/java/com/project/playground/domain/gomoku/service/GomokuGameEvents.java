@@ -68,7 +68,7 @@ public class GomokuGameEvents implements MessageListener {
         catch (NumberFormatException ignored) { /* 내부 토픽도 올바른 방 번호만 처리한다. */ }
     }
     private void notifyRoom(Long roomId) { subscriptions.values().stream().filter(s -> s.roomId.equals(roomId)).forEach(s -> send(s, true)); }
-    @Scheduled(fixedDelay = 5000) public void heartbeat() { subscriptions.values().forEach(s -> send(s, false)); }
+    @Scheduled(fixedDelay = 10_000) public void heartbeat() { subscriptions.values().forEach(s -> send(s, false)); }
     private void send(Subscription subscription, boolean changed) {
         if (!subscription.sending.compareAndSet(false, true)) return;
         writes.execute(() -> {

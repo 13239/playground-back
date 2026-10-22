@@ -11,6 +11,6 @@ import java.util.Optional;
 public interface GomokuMatchRepository extends JpaRepository<GomokuMatch, Long> {
     Optional<GomokuMatch> findFirstByRoomIdOrderByIdDesc(Long roomId);
     // 커서로 복구 배치를 나눠 진행 중인 판 전체를 한 번에 메모리로 읽지 않는다.
-    @Query("select m from GomokuMatch m where m.phase <> 'FINISHED' and m.id > :afterId order by m.id")
+    @Query("select m from GomokuMatch m where m.active = true and m.id > :afterId order by m.id")
     List<GomokuMatch> findActiveAfter(Long afterId, Pageable pageable);
 }

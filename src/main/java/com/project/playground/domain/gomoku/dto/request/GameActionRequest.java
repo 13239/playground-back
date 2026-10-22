@@ -13,6 +13,8 @@ public class GameActionRequest {
     @NotNull @Positive private final Long matchId;
     @NotNull @PositiveOrZero private final Long revision;
     @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}") private final String requestId;
+    // 더 오래된 문서가 남아 있어도 착수·기권·재대국을 보낼 수 없게 현재 페이지에 묶는다.
+    @NotNull @Pattern(regexp = "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}") private final String pageId;
     @NotNull private final Action action;
     @Min(0) @Max(19) private final Short x;
     @Min(0) @Max(19) private final Short y;

@@ -63,9 +63,9 @@ public class GomokuWaitingRoomService {
         var members = new ArrayList<>(participants.findMembers(roomId));
         var existing = members.stream().filter(p -> p.getUser().getId().equals(userId)).findFirst();
         if (existing.isPresent()) {
-            existing.get().seen(Instant.now());
-            if (room.getStatus() == RoomStatus.WAITING) cleanExpired(room, members, userId);
-            return snapshot(room, members, userId);
+            // 이미 참가한 계정의 재입장은 읽기 전용이다. 새 탭이 정상 플레이어의 접속 시간을 연장하지 못한다.
+            if (room.getStatus() == RoomStatus.WAITING) cleanExpired(room, members, null);
+            return snapshot(room, members, userId, false);
         }
         // 이미 참가한 사용자는 진행 중인 판으로 복귀하지만 신규 사용자는 대국에 끼어들 수 없다.
         if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.ROOM_FULL);
@@ -88,42 +88,55 @@ public class GomokuWaitingRoomService {
         return snapshot(room, members, userId);
     }
 
-    public WaitingRoomResponse state(Long userId, Long roomId) {
+    public WaitingRoomResponse state(Long userId, Long roomId, String pageId) {
         limits.state(userId);
         GomokuRoom room = openRoom(roomId);
         var members = new ArrayList<>(participants.findMembers(roomId));
         var own = requireMember(members, userId);
-        Instant now = Instant.now();
-        // 오래 멈춘 탭의 준비 상태는 자동 유지하지 않는다. 새로고침은 참가 상태를 복구한다.
-        if (room.getStatus() == RoomStatus.WAITING && own.isReady() && own.getLastSeenAt().isBefore(now.minusSeconds(30))) {
-            own.ready(false);
-            room.participantsChanged(members.size());
+        // pageId 없는 첫 조회는 참가 식별자를 찾기 위한 읽기 전용 요청이다.
+        // 페이지를 소유하지 않은 탭은 대국 연결 만료와 준비 상태를 변경하거나 SSE를 이용할 수 없다.
+        boolean owner = own.ownsPage(pageId);
+        if (pageId != null && !owner) throw failure(ErrorCode.ROOM_PAGE_IN_USE);
+        Instant now = gomokuClock.instant();
+        long previousRevision = room.getRevision();
+        // 채팅 참가 리스는 25초이며, 상태를 5~15초마다 읽어도 Redis 재발행은 최대 15초에 한 번이다.
+        boolean refreshAccess = owner && own.getLastSeenAt().isBefore(now.minusSeconds(15));
+        if (owner) {
+            // 오래 멈춘 탭의 준비 상태는 자동 유지하지 않는다. 새로고침은 참가 상태를 복구한다.
+            if (room.getStatus() == RoomStatus.WAITING && own.isReady() && own.getLastSeenAt().isBefore(now.minusSeconds(30))) {
+                own.ready(false);
+                room.participantsChanged(members.size());
+            }
+            own.seen(now);
         }
-        own.seen(now);
-        if (room.getStatus() == RoomStatus.WAITING) cleanExpired(room, members, userId);
-        return snapshot(room, members, userId);
+        // 읽기 전용 탭은 참가자를 만료시키는 상태 변경도 수행하지 않는다.
+        if (owner && room.getStatus() == RoomStatus.WAITING) cleanExpired(room, members, userId);
+        return snapshot(room, members, userId, owner, refreshAccess || room.getRevision() != previousRevision);
     }
 
-    public WaitingRoomResponse ready(Long userId, Long roomId, boolean ready) {
+    public WaitingRoomResponse ready(Long userId, Long roomId, boolean ready, String pageId) {
         limits.ready(userId);
         activeUser(userId);
         GomokuRoom room = openRoom(roomId);
         if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.GAME_STATE_CHANGED);
         var members = new ArrayList<>(participants.findMembers(roomId));
         var own = requireMember(members, userId);
+        if (!own.ownsPage(pageId)) throw failure(ErrorCode.ROOM_PAGE_IN_USE);
         own.seen(Instant.now());
         cleanExpired(room, members, userId);
         if (ready && members.size() != 2) throw failure(ErrorCode.ROOM_NOT_FULL);
-        if (own.isReady() != ready) {
+        boolean previousReady = own.isReady();
+        if (previousReady != ready) {
             own.ready(ready);
             room.participantsChanged(members.size());
         }
         games.startIfReady(room, members);
-        events.changed(roomId);
+        // 준비 상태가 그대로라면 SSE 알림과 Redis 발행을 반복하지 않는다. 대국 시작은 게임 서비스가 발행한다.
+        if (room.getStatus() == RoomStatus.WAITING && previousReady != own.isReady()) events.changed(roomId);
         return snapshot(room, members, userId);
     }
 
-    public void leave(Long userId, Long roomId, String membershipId) {
+    public void leave(Long userId, Long roomId, String membershipId, String pageId) {
         limits.leave(userId);
         activeUser(userId);
         var found = rooms.findForUpdateById(roomId);
@@ -132,6 +145,7 @@ public class GomokuWaitingRoomService {
         var members = new ArrayList<>(participants.findMembers(roomId));
         var own = members.stream().filter(p -> p.getUser().getId().equals(userId)).findFirst();
         if (own.isEmpty() || !own.get().getMembershipId().equals(membershipId)) return; // 네트워크 재시도의 같은 퇴장은 성공으로 처리한다.
+        if (own.get().getPageId() != null && !own.get().ownsPage(pageId)) throw failure(ErrorCode.ROOM_PAGE_IN_USE);
         removeMember(room, members, own.get());
     }
 
@@ -148,7 +162,9 @@ public class GomokuWaitingRoomService {
         if (own.isEmpty()) return;
         var participant = own.get();
         if (request.getAction() == RoomPageRequest.Action.OPEN) {
-            participant.openPage(request.getPageId());
+            if (!participant.openPage(request.getTabId(), request.getPageId(), gomokuClock.instant())) {
+                throw failure(ErrorCode.ROOM_PAGE_IN_USE);
+            }
         } else if (request.getPageId().equals(participant.getPageId())) {
             if (request.getAction() == RoomPageRequest.Action.LEAVE) removeMember(room, members, participant);
             else {
@@ -192,7 +208,7 @@ public class GomokuWaitingRoomService {
         var members = new ArrayList<>(participants.findMembers(roomId));
         // 종료 요청 자체가 유실된 브라우저도 접속 만료 뒤 참가를 제거한다. 일시적인 대국 단절의 재접속 유예는 유지한다.
         if (room.getStatus() == RoomStatus.PLAYING) {
-            var expired = members.stream().filter(p -> p.getLastSeenAt().isBefore(gomokuClock.instant().minusSeconds(90))).toList();
+            var expired = members.stream().filter(p -> p.getLastSeenAt().isBefore(gomokuClock.instant().minusSeconds(180))).toList();
             expired.forEach(p -> removeMember(room, members, p));
             return;
         }
@@ -220,7 +236,8 @@ public class GomokuWaitingRoomService {
 
     /** 강제 종료·오래 끊긴 접속은 다른 참가자가 조회할 때 정리한다. 브라우저 닫기 이벤트에 퇴장을 의존하지 않는다. */
     private void cleanExpired(GomokuRoom room, List<GomokuRoomParticipant> members, Long requester) {
-        Instant cutoff = Instant.now().minusSeconds(90);
+        // 대국 도중 모바일 백그라운드 스케줄러가 잠시 정지해도 150초 게임 복구 기한보다 먼저 퇴장시키지 않는다.
+        Instant cutoff = Instant.now().minusSeconds(room.getStatus() == RoomStatus.PLAYING ? 180 : 90);
         var stale = members.stream().filter(p -> !p.getUser().getId().equals(requester)
                 && (p.getLastSeenAt().isBefore(cutoff) || p.getUser().getStatus() != UserStatus.ACTIVE
                     || p.getUser().getDeletedAt() != null)).toList();
@@ -242,10 +259,21 @@ public class GomokuWaitingRoomService {
     }
 
     private WaitingRoomResponse snapshot(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer) {
-        // 진행 중에도 참가 조회로 접속과 방 채팅 리스를 함께 유지하며 숨긴 추첨 결과는 공개하지 않는다.
-        var game = games.synchronize(room, members, viewer);
-        chatAccess.changed(room, members);
-        return WaitingRoomResponse.from(room, members, viewer, game, Instant.now());
+        return snapshot(room, members, viewer, true);
+    }
+
+    private WaitingRoomResponse snapshot(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer, boolean owner) {
+        return snapshot(room, members, viewer, owner, owner);
+    }
+
+    private WaitingRoomResponse snapshot(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer,
+                                         boolean owner, boolean refreshAccess) {
+        // 진행 중에도 정상 참가 조회는 접속·채팅 리스를 유지하지만 숨긴 추첨 결과는 공개하지 않는다.
+        // 화면 표시용 viewer와 접속 수명 갱신 권한을 분리해 다른 탭의 단순 조회를 차단한다.
+        var game = games.synchronize(room, members, owner ? viewer : null);
+        // 페이지 인증 전의 읽기 전용 조회는 Redis 참가 리스도 연장하지 않는다.
+        if (owner && refreshAccess) chatAccess.changed(room, members);
+        return WaitingRoomResponse.from(room, members, viewer, game, gomokuClock.instant());
     }
 
     private BusinessException failure(ErrorCode code) { return new BusinessException(code); }

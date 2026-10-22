@@ -1,6 +1,7 @@
 package com.project.playground.domain.gomoku.repository;
 
 import com.project.playground.domain.gomoku.entity.GomokuRoomParticipant;
+import com.project.playground.domain.gomoku.enums.RoomStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.domain.Pageable;
@@ -18,8 +19,11 @@ public interface GomokuRoomParticipantRepository extends JpaRepository<GomokuRoo
     Optional<GomokuRoomParticipant> findCurrent(Long userId);
 
     // 접속 확인 인덱스로 만료 후보만 제한 조회하고 실제 삭제는 방 잠금 안에서 다시 검증한다.
-    @Query("select distinct p.room.id from GomokuRoomParticipant p where p.lastSeenAt < :cutoff")
-    List<Long> findExpiredRoomIds(Instant cutoff, Pageable page);
+    // 대국 중에는 모바일 복귀 유예(180초), 대기 중에는 90초를 적용해 실제 삭제할 방만 조회한다.
+    @Query("select distinct p.room.id from GomokuRoomParticipant p "
+            + "where (p.room.status <> :playingStatus and p.lastSeenAt < :waitingCutoff) "
+            + "or (p.room.status = :playingStatus and p.lastSeenAt < :playingCutoff)")
+    List<Long> findExpiredRoomIds(Instant waitingCutoff, Instant playingCutoff, RoomStatus playingStatus, Pageable page);
 
     // 종료 예약 복구는 서버 시작·Redis 재구독 때만 읽고, 평상시의 빈 테이블 폴링을 추가하지 않는다.
     @Query("select p from GomokuRoomParticipant p where p.exitDeadline is not null and p.id > :afterId order by p.id")

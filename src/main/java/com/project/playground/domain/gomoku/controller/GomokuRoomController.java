@@ -31,19 +31,19 @@ public class GomokuRoomController {
     @PostMapping("/state")
     public ResponseEntity<WaitingRoomResponse> state(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                                     @Valid @RequestBody RoomStateRequest request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.state(session.getId(), request.getRoomId()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.state(session.getId(), request.getRoomId(), request.getPageId()));
     }
 
     @PostMapping("/ready")
     public ResponseEntity<WaitingRoomResponse> ready(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                                     @Valid @RequestBody ReadyRoomRequest request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.ready(session.getId(), request.getRoomId(), request.getReady()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.ready(session.getId(), request.getRoomId(), request.getReady(), request.getPageId()));
     }
 
     @PostMapping("/leave")
     public ResponseEntity<Void> leave(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                       @Valid @RequestBody LeaveRoomRequest request) {
-        waiting.leave(session.getId(), request.getRoomId(), request.getMembershipId());
+        waiting.leave(session.getId(), request.getRoomId(), request.getMembershipId(), request.getPageId());
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 

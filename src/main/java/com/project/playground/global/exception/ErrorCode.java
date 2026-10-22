@@ -29,6 +29,8 @@ public enum ErrorCode {
     ROOM_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "오목 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
     // 대기실 상태 충돌은 로그인 만료와 구분하고 다른 계정의 방 정보를 공개하지 않는다.
+    // 계정당 한 대국·한 탭만 활성화한다. 새로고침은 같은 탭 식별자로 이어받는다.
+    ROOM_PAGE_IN_USE(HttpStatus.CONFLICT, "다른 탭에서 이 대국을 이용하고 있습니다. 기존 탭에서 나간 뒤 다시 시도해 주세요."),
     ROOM_ALREADY_JOINED(HttpStatus.CONFLICT, "참여 중인 방이 있습니다. 기존 방에서 나간 뒤 입장해 주세요."),
     ROOM_FULL(HttpStatus.CONFLICT, "방이 가득 찼습니다. 다른 방을 선택해 주세요."),
     ROOM_CLOSED(HttpStatus.GONE, "이미 닫힌 방입니다. 다른 방을 선택해 주세요."),

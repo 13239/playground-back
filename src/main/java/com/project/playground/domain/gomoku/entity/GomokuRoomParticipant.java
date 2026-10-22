@@ -37,6 +37,9 @@ public class GomokuRoomParticipant {
     // 새로고침은 새 페이지가 참가를 이어받으며 이전 페이지의 지연 종료 요청을 무효화한다.
     @Column(name = "page_id", length = 36, columnDefinition = "char(36)")
     private String pageId;
+    // 한 브라우저 탭은 새로고침마다 다른 pageId를 사용하되 같은 tabId로 참가를 이어받는다.
+    @Column(name = "tab_id", length = 36, columnDefinition = "char(36)")
+    private String tabId;
     private Instant exitDeadline;
 
     @Builder
@@ -52,9 +55,22 @@ public class GomokuRoomParticipant {
     /** 준비 요청은 토글 대신 원하는 값을 받아 중복 전송에도 같은 결과를 유지한다. */
     public void ready(boolean ready) { this.ready = ready; }
 
-    /** 같은 페이지의 중복 OPEN은 종료 예약을 취소하지 않는다. 새 문서가 열린 경우에만 참가를 이어받는다. */
-    public void openPage(String nextPageId) {
-        if (!nextPageId.equals(pageId)) { pageId = nextPageId; exitDeadline = null; }
+    /** 같은 페이지의 중복 OPEN도 허용하되, 닫힘 예약은 새 문서의 정상 OPEN에만 취소한다. */
+    /** 같은 브라우저 탭의 새 문서는 이전 문서를 교체한다. 다른 탭은 기존 연결이 살아 있으면 입장할 수 없다. */
+    public boolean openPage(String nextTabId, String nextPageId, Instant now) {
+        if (tabId != null && !tabId.equals(nextTabId) && exitDeadline == null
+                && !lastSeenAt.isBefore(now.minusSeconds(90))) return false;
+        // 응답 유실로 동일 OPEN을 재시도해도 다른 탭으로 판단하지 않는다.
+        tabId = nextTabId;
+        pageId = nextPageId;
+        exitDeadline = null;
+        seen(now);
+        return true;
+    }
+
+    /** 오래된 페이지의 뒤늦은 명령과 종료 이벤트는 현재 플레이어에게 영향을 주지 않는다. */
+    public boolean ownsPage(String currentPageId) {
+        return currentPageId != null && currentPageId.equals(pageId) && exitDeadline == null;
     }
 
     /** 중복 pagehide가 퇴장 마감을 계속 연장하지 못하게 최초 종료 시각을 유지한다. */

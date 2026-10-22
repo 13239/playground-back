@@ -23,6 +23,9 @@ public class GomokuMatch {
     @Column(name = "membership_one", nullable = false, length = 36, columnDefinition = "char(36)") private String membershipOne;
     @Column(name = "membership_two", nullable = false, length = 36, columnDefinition = "char(36)") private String membershipTwo;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 12) private Phase phase;
+    // DB가 phase 변경마다 계산한다. 서비스는 읽기만 하며 활성 대국 복구 인덱스에 사용한다.
+    @Column(name = "active", insertable = false, updatable = false)
+    private boolean active;
     private short blackSeat;
     private short blackCard;
     private short pickOne = -1;
