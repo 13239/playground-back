@@ -111,6 +111,8 @@ public class UserService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
+        // 최고 관리자 보호를 Redis 부수 효과보다 먼저 검사해 로그인 세션도 보존한다.
+        user.assertNotSuperAdmin();
         redisSessionRepository.blockAndRevokeAll(userId);
         user.deactivate();
     }
@@ -125,6 +127,8 @@ public class UserService {
     public void delete(Long userId) {
         User user = findForUpdate(userId);
 
+        // 삭제가 거절될 계정의 세션부터 폐기하지 않는다.
+        user.assertNotSuperAdmin();
         redisSessionRepository.blockAndRevokeAll(userId);
 
         if (user.getDeletedAt() == null) {

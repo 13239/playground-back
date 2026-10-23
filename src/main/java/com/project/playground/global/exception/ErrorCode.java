@@ -19,6 +19,31 @@ public enum ErrorCode {
     SIGN_UP_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원가입 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
 
+    // 관리자 정책 오류는 인증 실패와 구분하며 상세 내부 정보는 반환하지 않는다.
+    ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "역할을 찾을 수 없습니다."),
+    ROLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 존재하는 역할 코드입니다."),
+    ROLE_PROTECTED(HttpStatus.CONFLICT, "보호된 기본 역할 또는 슈퍼 관리자 계정은 변경할 수 없습니다."),
+    ROLE_IN_USE(HttpStatus.CONFLICT, "배정된 회원이 있는 역할은 삭제할 수 없습니다."),
+    ROLE_PERMISSION_NOT_ASSIGNABLE(HttpStatus.BAD_REQUEST, "해당 기능 권한은 다른 역할에 배정할 수 없습니다."),
+    AUTHORIZATION_CHANGED(HttpStatus.CONFLICT, "역할 또는 권한이 변경되었습니다. 다시 조회해 주세요."),
+    AUTHORIZATION_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "권한 정보를 일시적으로 확인할 수 없습니다."),
+
+    // 접속 제한은 로그인 폐기와 함께 관리자 지정 안내를 전달한다. 반영 중 장애에는 재로그인을 요구하지 않는다.
+    ACCESS_RESTRICTED(HttpStatus.UNAUTHORIZED, "서버 점검 중입니다. 잠시 후 다시 로그인해 주세요."),
+    ACCESS_POLICY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "접속 설정을 반영하고 있습니다. 잠시 후 다시 시도해 주세요."),
+    ACCESS_EXEMPTION_INVALID(HttpStatus.BAD_REQUEST, "등록된 일반 역할만 접속 허용 목록에 지정할 수 있습니다."),
+
+    // 운영상 게임 이용 불가와 인증/저장소 장애를 서로 다른 코드로 전달한다.
+    CATALOG_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "이용할 수 있는 게임을 찾을 수 없습니다."),
+    CATALOG_MODE_NOT_FOUND(HttpStatus.NOT_FOUND, "이용할 수 있는 게임 모드를 찾을 수 없습니다."),
+    CATALOG_GENRE_NOT_FOUND(HttpStatus.NOT_FOUND, "등록된 게임 장르를 찾을 수 없습니다."),
+    GAME_IMPLEMENTATION_UNAVAILABLE(HttpStatus.CONFLICT, "현재 지원하지 않는 게임 구현 또는 모드입니다."),
+    GAME_CONFIGURATION_INVALID(HttpStatus.BAD_REQUEST, "게임 구현이 지원하는 설정 범위를 확인해 주세요."),
+    GAME_CATALOG_CHANGED(HttpStatus.CONFLICT, "게임 설정이 변경되었습니다. 다시 조회해 주세요."),
+    GAME_CATALOG_CONFLICT(HttpStatus.CONFLICT, "이미 등록되었거나 다른 변경과 충돌하는 게임 설정입니다."),
+    GAME_CATALOG_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "게임 목록을 일시적으로 확인할 수 없습니다."),
+    GAME_UNAVAILABLE(HttpStatus.CONFLICT, "현재 이 게임을 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
+
     // 오목 방은 계정당 하나만 열고 소유자만 빈 대기방을 닫을 수 있다.
     ROOM_ALREADY_HOSTING(HttpStatus.CONFLICT, "이미 만든 방이 있습니다. 목록에서 내 방을 확인해 주세요."),
     ROOM_REQUEST_EXPIRED(HttpStatus.CONFLICT, "이미 닫힌 방의 요청입니다. 새로 방을 만들어 주세요."),

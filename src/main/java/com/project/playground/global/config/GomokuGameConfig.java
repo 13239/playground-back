@@ -17,6 +17,8 @@ public class GomokuGameConfig {
         var listener = new RedisMessageListenerContainer();
         listener.setConnectionFactory(factory);
         listener.addMessageListener(events, new ChannelTopic(GomokuGameEvents.TOPIC));
+        // 대국 이벤트가 없어도 운영 제한 변경 직후 기존 연결을 다시 인증한다.
+        listener.addMessageListener(events, new ChannelTopic("auth:access-policy:changed:v1"));
         // 마감 예약도 다른 인스턴스에 전달해 요청을 받은 서버에만 시간 처리가 묶이지 않게 한다.
         listener.addMessageListener(clock, new ChannelTopic(GomokuGameEvents.CLOCK_TOPIC));
         return listener;

@@ -30,6 +30,13 @@ local resultKey = KEYS[6]
 -- ARGV[15]: 세션별 갱신 결과 Key 접두사
 -- ARGV[16]: 로그인에서 소유를 증명한 브라우저 공개키 지문. dev HTTP 예외는 공개키와 구분한 dev-http 표시
 -- ARGV[17]: 사용자가 다른 로그인 종료에 동의했는지 여부 (true / false)
+-- ARGV[18..19]: DB에서 잠금으로 확인한 역할과 19자리 운영 정책 버전
+
+-- 정책 검사·세션 생성·동시 로그인 결과 공유까지 같은 Lua 안에서 처리한다.
+local gate = access_role(ARGV[18], ARGV[19])
+if gate == -2 then return 'ACCESS_RESTRICTED' end
+if gate ~= 1 or redis.call('HGET', policyKey, 'state') ~= 'ready'
+    or redis.call('HGET', policyKey, 'version') ~= ARGV[19] then return 'ACCESS_POLICY_UNAVAILABLE' end
 
 local sessionId = ARGV[1]
 local expiresAt = tonumber(ARGV[7])
@@ -73,6 +80,8 @@ if previousSessionId ~= '' and redis.call('EXISTS', resultKey) == 1 then
         return 'REPLACED'
     end
     local currentKey = ARGV[8] .. cached[3]
+    -- 제한으로 종료된 로그인 결과는 재사용하지 않는다. 새 비밀번호 인증으로만 다시 로그인한다.
+    if access_session(currentKey) == 1 then
     local current = redis.call('HMGET', currentKey, 'sessionId', 'id', 'refreshToken', 'expiresAt')
     if current[1] ~= cached[3] or current[2] ~= ARGV[2] or current[3] ~= cached[4]
             or not tonumber(current[4]) or tonumber(current[4]) <= now
@@ -80,6 +89,7 @@ if previousSessionId ~= '' and redis.call('EXISTS', resultKey) == 1 then
         return 'REPLACED'
     end
     return cached[5]
+    end
 end
 
 -- 동일한 sessionId를 중복 생성하지 않는다.
@@ -102,7 +112,7 @@ if previousSessionId ~= '' then
     end
     -- 같은 브라우저 키를 증명했거나 같은 계정의 비밀번호를 다시 인증한 경우에만 이전 세션을 교체한다.
     -- 다른 계정의 비밀번호와 훔친 쿠키만으로 피해자의 세션을 삭제하지 못하게 한다.
-    if previous[1] == previousSessionId and previous[2] == ARGV[10] and matchesToken
+    if access_session(previousSessionKey) == 1 and previous[1] == previousSessionId and previous[2] == ARGV[10] and matchesToken
             -- dev-http는 공개키가 아니므로 같은 값이라도 기존 브라우저의 소유 증명으로 사용하지 않는다.
             and (previous[2] == ARGV[2] or previous[5] == ARGV[16] and ARGV[16] ~= 'dev-http')
             and tonumber(previous[4]) and tonumber(previous[4]) > now then
@@ -123,8 +133,13 @@ for _, member in ipairs(members) do
     local memberExpiresAt =
             tonumber(string.match(member, '|(%d+)$'))
 
-    if memberExpiresAt and memberExpiresAt <= now then
+    local memberSid = string.match(member, '^([^|]+)|')
+    -- 영구 폐기 경계 또는 이전 배포 계약의 세션은 중복 로그인으로 계산하지 않는다.
+    if memberExpiresAt and (memberExpiresAt <= now or memberSid and access_session(ARGV[8] .. memberSid) ~= 1) then
         redis.call('ZREM', userSessionsKey, member)
+        if memberSid and redis.call('HGET', ARGV[8] .. memberSid, 'id') == ARGV[2] then
+            redis.call('DEL', ARGV[8] .. memberSid, ARGV[15] .. memberSid)
+        end
     end
 end
 
@@ -182,6 +197,9 @@ redis.call(
     -- 새 로그인은 항상 0세대부터 시작하며 이후 회전만 이 값을 증가시킨다.
     'refreshGeneration', '0',
     'browserKeyThumbprint', ARGV[16],
+    -- 운영 제한 해제나 역할 예외 추가로 과거 로그인을 되살리지 않도록 발급 시점을 고정한다.
+    'accessRole', ARGV[18],
+    'accessRevision', ARGV[19],
     'keepLoggedIn', ARGV[5],
     'createdAt', ARGV[6],
     -- 홈 채팅 공개 범위는 애플리케이션 시계와 분리한 Redis 접수 시각(마이크로초)으로 고정한다.

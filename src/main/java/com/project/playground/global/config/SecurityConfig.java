@@ -4,6 +4,8 @@ import com.project.playground.auth.ratelimit.LoginRateLimitProperties;
 import com.project.playground.auth.clientip.LoginClientIpResolver;
 import com.project.playground.auth.proof.BrowserProofFilter;
 import com.project.playground.auth.proof.BrowserProofService;
+import com.project.playground.domain.authorization.service.AdminAuthorizationService;
+import com.project.playground.global.security.admin.AdminAccessFilter;
 import com.project.playground.global.security.BffClientFilter;
 import com.project.playground.global.security.handler.SecurityProblemWriter;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,6 +53,9 @@ public class SecurityConfig {
 
     private final Environment environment;
 
+    // 역할 권한은 Spring authority가 아닌 현재 DB 기반 공통 서비스에서 판단한다.
+    private final AdminAuthorizationService adminAuthorizationService;
+
     @Value("${auth.bff.mtls-required:true}")
     private boolean mtlsRequired;
 
@@ -78,6 +83,8 @@ public class SecurityConfig {
                 // 서버 인증은 공개 로그인·nonce에도 적용하고 브라우저 증명은 Bearer 인증 뒤에 확인한다.
                 .addFilterBefore(new BffClientFilter(mtlsRequired, allowedCertificates, devSharedSecret, environment, securityProblemWriter), BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(new BrowserProofFilter(browserProofService, loginClientIpResolver, securityProblemWriter, proofRequired), BearerTokenAuthenticationFilter.class)
+                // 관리자 진입 검사는 MVC 인터셉터에만 의존하지 않고 브라우저 증명 직후 적용한다.
+                .addFilterAfter(new AdminAccessFilter(adminAuthorizationService, securityProblemWriter), BrowserProofFilter.class)
                 .cors(AbstractHttpConfigurer::disable)
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -101,6 +108,8 @@ public class SecurityConfig {
                                 "/api/auth/refresh"
                         ).permitAll()
                         .requestMatchers("/api/test").permitAll()
+                        // 카탈로그 공개 조회도 BFF 서버 인증은 통과한다. 모드 admission POST는 기존 인증을 요구한다.
+                        .requestMatchers(HttpMethod.GET, "/api/games", "/api/games/*", "/api/game-genres").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2

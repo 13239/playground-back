@@ -1,6 +1,9 @@
 package com.project.playground.global.security.jwt;
 
 import com.project.playground.auth.repository.RedisSessionRepository;
+import com.project.playground.domain.accesspolicy.AccessRestrictedException;
+import com.project.playground.global.exception.BusinessException;
+import com.project.playground.global.security.handler.AccessPolicyAuthenticationException;
 import com.project.playground.global.security.session.RedisSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.convert.converter.Converter;
@@ -44,6 +47,11 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
         } catch (DataAccessException e) {
             // 필터 단계의 Redis 장애도 공통 인증 실패 처리기로 전달하여 세션 만료와 구분한다.
             throw new AuthenticationServiceException("로그인 세션 저장소를 이용할 수 없습니다.", e);
+        } catch (AccessRestrictedException e) {
+            // 필터 예외도 관리자 지정 문구를 유지하며 토큰 만료로 바꾸지 않는다.
+            throw new AccessPolicyAuthenticationException(e.getErrorCode(), e.getNotice());
+        } catch (BusinessException e) {
+            throw new AccessPolicyAuthenticationException(e.getErrorCode(), e.getErrorCode().getMessage());
         }
 
         // JWT 사용자와 Redis 세션 소유자가 동일해야 한다.

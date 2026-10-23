@@ -26,12 +26,18 @@ public class SecurityProblemWriter {
     private final JsonMapper jsonMapper;
 
     public void write(HttpServletRequest request, HttpServletResponse response, ErrorCode errorCode) throws IOException {
+        write(request, response, errorCode, errorCode.getMessage());
+    }
+
+    /** 관리자 검증을 통과한 접속 제한 문구에만 동적 상세 메시지를 허용한다. */
+    public void write(HttpServletRequest request, HttpServletResponse response, ErrorCode errorCode, String notice) throws IOException {
         // 이미 전송된 응답은 다시 작성하지 않는다.
         if (response.isCommitted()) {
             return;
         }
 
         ProblemDetail problem = ApiProblemFactory.create(errorCode);
+        if (errorCode == ErrorCode.ACCESS_RESTRICTED) problem.setDetail(notice);
 
         // MVC를 거치지 않으므로 요청 경로를 직접 설정하며 쿼리 문자열은 포함하지 않는다.
         problem.setInstance(URI.create(request.getRequestURI()));

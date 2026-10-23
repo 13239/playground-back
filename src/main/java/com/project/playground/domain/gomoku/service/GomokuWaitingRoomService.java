@@ -15,6 +15,8 @@ import com.project.playground.domain.user.enums.UserStatus;
 import com.project.playground.domain.user.repository.UserRepository;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
+import com.project.playground.domain.game.service.GameAvailabilityService;
+import com.project.playground.domain.gomoku.module.GomokuModule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -44,6 +46,7 @@ public class GomokuWaitingRoomService {
     private final GomokuGameEvents events;
     private final Clock gomokuClock;
     private final RedisSessionRepository sessions;
+    private final GameAvailabilityService availability;
 
     public WaitingRoomResponse join(Long userId, JoinRoomRequest request) {
         limits.join(userId);
@@ -72,6 +75,8 @@ public class GomokuWaitingRoomService {
         }
         // 이미 참가한 사용자는 진행 중인 판으로 복귀하지만 신규 사용자는 대국에 끼어들 수 없다.
         if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.ROOM_FULL);
+        // 기존 참가자의 진행 중 판 복귀는 유지하고 신규 참가만 숨김·점검 정책으로 차단한다.
+        availability.requireNewPlay(GomokuModule.GAME, GomokuModule.ONLINE);
         cleanExpired(room, members, null);
         if (room.getStatus() == RoomStatus.CLOSED) throw failure(ErrorCode.ROOM_CLOSED);
         // 코드만으로 비공개 방의 비밀번호 검증을 건너뛰지 않는다.

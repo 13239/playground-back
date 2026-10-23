@@ -34,6 +34,7 @@ public class GomokuGameController {
                 com.project.playground.global.exception.ErrorCode.ROOM_PAGE_IN_USE);
         waiting.state(session.getId(), request.getRoomId(), request.getPageId());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("X-Accel-Buffering", "no")
-                .body(events.subscribe(session.getId(), request.getRoomId()));
+                // 연결 이후에도 같은 로그인 세션의 운영 제한·로그아웃·만료를 재확인한다.
+                .body(events.subscribe(session.getId(), session.getSessionId(), request.getRoomId()));
     }
 }

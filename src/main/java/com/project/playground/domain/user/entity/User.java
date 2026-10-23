@@ -3,7 +3,10 @@ package com.project.playground.domain.user.entity;
 import com.project.playground.domain.user.enums.Gender;
 import com.project.playground.domain.user.enums.ProfileAvatar;
 import com.project.playground.domain.user.enums.UserStatus;
+import com.project.playground.domain.authorization.entity.Role;
 import com.project.playground.global.audit.TimeEntity;
+import com.project.playground.global.exception.BusinessException;
+import com.project.playground.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -55,6 +58,14 @@ public class User extends TimeEntity {
     @Column(nullable = false, length = 10)
     private UserStatus status;
 
+    // 가입 입력으로 역할을 받지 않으며 모든 신규 회원은 USER로 시작한다.
+    @Column(name = "role_code", nullable = false, length = 64)
+    private String roleCode = Role.DEFAULT_ROLE;
+
+    // 프로필 편집과 분리해 관리자 역할 배정의 오래된 요청만 감지한다.
+    @Column(name = "role_version", nullable = false)
+    private long roleVersion;
+
     @Builder
     public User(String nickname, String username, String password, String email, String phone, LocalDate birthday, Gender gender, UserStatus status) {
         this.nickname = nickname;
@@ -77,6 +88,39 @@ public class User extends TimeEntity {
     }
 
     public void deactivate() {
+        assertNotSuperAdmin();
         this.status = UserStatus.INACTIVE;
+    }
+
+    /** Redis 차단 전에 호출하며 유일한 슈퍼 관리자가 이용 불가 상태가 되는 것을 막는다. */
+    public void assertNotSuperAdmin() {
+        if (Role.SUPER_ADMIN.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+    }
+
+    /** 일반 역할 변경으로 최고 권한을 만들거나 마지막 최고 권한을 없애지 않는다. */
+    public void changeRole(String roleCode) {
+        assertNotSuperAdmin();
+        if (Role.SUPER_ADMIN.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        assignRole(Objects.requireNonNull(roleCode));
+    }
+
+    /** 명시적인 초기 설정 서비스만 사용하며 활성 상태의 기존 계정에 최고 권한을 배정한다. */
+    public void initializeSuperAdmin() {
+        if (getDeletedAt() != null || status != UserStatus.ACTIVE) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        assignRole(Role.SUPER_ADMIN);
+    }
+
+    /** 상위 클래스의 소프트 삭제 경로에서도 최고 관리자 보호 규칙을 적용한다. */
+    @Override
+    public void delete() {
+        assertNotSuperAdmin();
+        super.delete();
+    }
+
+    private void assignRole(String nextRole) {
+        if (!Objects.equals(roleCode, nextRole)) {
+            roleCode = nextRole;
+            roleVersion = Math.incrementExact(roleVersion);
+        }
     }
 }

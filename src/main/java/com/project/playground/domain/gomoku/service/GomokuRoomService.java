@@ -14,6 +14,8 @@ import com.project.playground.domain.user.repository.UserRepository;
 import com.project.playground.domain.user.repository.reader.UserReader;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
+import com.project.playground.domain.game.service.GameAvailabilityService;
+import com.project.playground.domain.gomoku.module.GomokuModule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,6 +39,7 @@ public class GomokuRoomService {
     private final RoomRateLimitService rateLimits;
     private final GomokuRoomParticipantRepository participants;
     private final RoomChatAccessPublisher chatAccess;
+    private final GameAvailabilityService availability;
 
     public RoomPageResponse search(Long userId, SearchRoomsRequest request) {
         rateLimits.search(userId);
@@ -70,6 +73,8 @@ public class GomokuRoomService {
         }
         // 방장과 참가자 모두 계정당 하나의 대기실만 사용할 수 있다.
         if (participants.findCurrent(userId).isPresent()) throw new BusinessException(ErrorCode.ROOM_ALREADY_JOINED);
+        // 이미 생성한 요청의 재확인은 위에서 복원하고 새 방 생성만 게임/온라인 모드 정책을 검사한다.
+        availability.requireNewPlay(GomokuModule.GAME, GomokuModule.ONLINE);
         String passwordHash = request.getVisibility() == RoomVisibility.PRIVATE ? passwordEncoder.encode(request.getPassword()) : null;
         var room = GomokuRoom.builder().host(host).createRequestId(request.getRequestId()).title(request.getTitle().strip())
                 .visibility(request.getVisibility()).passwordHash(passwordHash).inviteCode(newInviteCode())

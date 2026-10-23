@@ -8,6 +8,8 @@ import com.project.playground.domain.gomoku.repository.*;
 import com.project.playground.domain.user.enums.UserStatus;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
+import com.project.playground.domain.game.service.GameAvailabilityService;
+import com.project.playground.domain.gomoku.module.GomokuModule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -33,6 +35,7 @@ public class GomokuGameService {
     private final RoomChatAccessPublisher chatAccess;
     private final GomokuGameEvents events;
     private final Clock gomokuClock;
+    private final GameAvailabilityService availability;
 
     public void startIfReady(GomokuRoom room, List<GomokuRoomParticipant> members) {
         if (room.getStatus() == RoomStatus.WAITING && members.size() == 2 && members.stream().allMatch(GomokuRoomParticipant::isReady)) {
@@ -41,6 +44,8 @@ public class GomokuGameService {
     }
 
     private GomokuMatch begin(GomokuRoom room, List<GomokuRoomParticipant> members, GomokuMatch previous, Instant now) {
+        // 새 첫판/재대국에만 현재 정책을 확인한다. 기존 판의 착수·기권·마감 처리는 계속 허용한다.
+        availability.requireNewPlay(GomokuModule.GAME, GomokuModule.ONLINE);
         var latest = matches.findFirstByRoomIdOrderByIdDesc(room.getId());
         short assigned = previous != null && previous.getWinnerSeat() > 0 ? (short) (3 - previous.getWinnerSeat()) : 0;
         var match = matches.saveAndFlush(GomokuMatch.begin(room.getId(), latest.map(m -> m.getRoundNumber() + 1).orElse(1),
@@ -133,6 +138,8 @@ public class GomokuGameService {
             }
             case REMATCH -> {
                 requirePhase(match, GomokuMatch.Phase.FINISHED);
+                // 첫 사람의 재대국 요청부터 거절해 점검 중 대기 상태만 남지 않게 한다.
+                availability.requireNewPlay(GomokuModule.GAME, GomokuModule.ONLINE);
                 match.rematch(seat);
                 if (match.isRematchOne() && match.isRematchTwo()) match = begin(room, members, match, now);
             }

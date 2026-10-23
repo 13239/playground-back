@@ -7,6 +7,8 @@ import com.project.playground.domain.user.dto.response.UserProfileResponse;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import com.project.playground.global.security.session.Session;
+import com.project.playground.domain.accesspolicy.redis.AccessPolicyScripts;
+import com.project.playground.domain.accesspolicy.redis.RedisAccessPolicyRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,14 +23,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RedisChatTicketRepository {
 
-    private static final RedisScript<List> ISSUE = RedisScript.of(
-            new ClassPathResource("redis/chat/issue-ticket.lua"), List.class);
-    private static final RedisScript<List> RESERVE = RedisScript.of(
-            new ClassPathResource("redis/chat/reserve-ticket.lua"), List.class);
+    // 인증 필터 이후 설정이 바뀌어도 티켓 예약·최종 발급 각각에서 같은 원자 정책 검사를 적용한다.
+    private static final String POLICY_GUARD = "local gate = access_session(KEYS[1]); "
+            + "if gate == -2 then return {'ACCESS_RESTRICTED', '0', '0'} "
+            + "elseif gate == -3 then return {'ACCESS_POLICY_UNAVAILABLE', '0', '0'} "
+            + "elseif gate ~= 1 then return {'SESSION', '0', '0'} end";
+    private static final RedisScript<List> ISSUE = AccessPolicyScripts.script(
+            "redis/chat/issue-ticket.lua", POLICY_GUARD, List.class);
+    private static final RedisScript<List> RESERVE = AccessPolicyScripts.script(
+            "redis/chat/reserve-ticket.lua", POLICY_GUARD, List.class);
     private static final RedisScript<Long> RELEASE_RESERVATION = RedisScript.of(
             new ClassPathResource("redis/chat/release-ticket-reservation.lua"), Long.class);
 
     private final StringRedisTemplate redisTemplate;
+    private final RedisAccessPolicyRepository accessPolicy;
 
     /** 유효한 세션의 발급 시도만 차감하고 예약과 실제 티켓을 합친 대기 상한을 DB 조회 전에 확인한다. */
     public void reserve(String ticketHash, Session session) {
@@ -87,6 +95,7 @@ public class RedisChatTicketRepository {
             throw new BusinessException(ErrorCode.CHAT_SERVICE_UNAVAILABLE);
         }
         String status = String.valueOf(result.getFirst());
+        accessPolicy.requireResult(status);
         if ("SESSION".equals(status)) throw new BusinessException(ErrorCode.INVALID_SESSION);
         if ("LIMIT".equals(status)) {
             throw new ChatTicketRateLimitException(Long.parseLong(String.valueOf(result.get(1))));

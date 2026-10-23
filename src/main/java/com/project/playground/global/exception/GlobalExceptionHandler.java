@@ -1,6 +1,8 @@
 package com.project.playground.global.exception;
 
 import com.project.playground.auth.chat.ChatTicketRateLimitException;
+import com.project.playground.domain.accesspolicy.AccessRestrictedException;
+import com.project.playground.domain.game.service.GameUnavailableException;
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
 import com.project.playground.auth.ratelimit.SignUpRateLimitException;
 import com.project.playground.domain.gomoku.service.RoomRateLimitException;
@@ -20,6 +22,22 @@ import java.util.Objects;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 게임 점검 안내는 인증 실패로 처리하지 않으며 관리자가 검증한 평문만 전달한다.
+    @ExceptionHandler(GameUnavailableException.class)
+    public ResponseEntity<ProblemDetail> gameUnavailable(GameUnavailableException exception) {
+        ProblemDetail problem = ApiProblemFactory.create(ErrorCode.GAME_UNAVAILABLE);
+        problem.setDetail(exception.getNotice());
+        return ResponseEntity.status(problem.getStatus()).cacheControl(CacheControl.noStore()).body(problem);
+    }
+
+    // 검증된 운영 안내만 동적으로 공개하고 인증 토큰·내부 예외 메시지는 그대로 반환하지 않는다.
+    @ExceptionHandler(AccessRestrictedException.class)
+    public ResponseEntity<ProblemDetail> accessRestricted(AccessRestrictedException exception) {
+        ProblemDetail problem = ApiProblemFactory.create(ErrorCode.ACCESS_RESTRICTED);
+        problem.setDetail(exception.getNotice());
+        return ResponseEntity.status(problem.getStatus()).cacheControl(CacheControl.noStore()).body(problem);
+    }
 
     // 기존 로그인 제한과 같은 Retry-After 계약으로 채팅 접속 재시도 간격을 전달한다.
     @ExceptionHandler(ChatTicketRateLimitException.class)

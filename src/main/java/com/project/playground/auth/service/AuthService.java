@@ -13,6 +13,7 @@ import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.auth.session.SessionExpirationPolicy;
 import com.project.playground.domain.activitylog.enums.ActivityType;
 import com.project.playground.domain.activitylog.service.ActivityLogger;
+import com.project.playground.domain.accesspolicy.service.AccessPolicyAdmissionService;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import com.project.playground.global.security.CustomUserDetails;
@@ -49,6 +50,9 @@ public class AuthService {
     private final JwtRefreshTokenService jwtRefreshTokenService;
 
     private final RedisSessionRepository redisSessionRepository;
+
+    // 현재 DB 역할과 접속 정책에 결합한 세션만 발급한다.
+    private final AccessPolicyAdmissionService accessAdmission;
 
     private final SessionExpirationPolicy sessionExpirationPolicy;
 
@@ -150,9 +154,8 @@ public class AuthService {
          *
          * 차단·중복 확인, 교체 동의 확인, 기존 세션 교체, 세션 생성과 중복 결과 공유는 Lua Script에서 원자적으로 처리한다.
          */
-        String encryptedResult = redisSessionRepository.create(session, replacement,
-                        authResultCipher.encrypt(candidate, resultContext), Boolean.TRUE.equals(request.getReplaceExistingSession()))
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+        String encryptedResult = accessAdmission.create(session, replacement,
+                authResultCipher.encrypt(candidate, resultContext), Boolean.TRUE.equals(request.getReplaceExistingSession()));
 
         // 동시 요청은 먼저 성공한 한 번의 결과를 받으며 각자 새 세션을 만들지 않는다.
         return authResultCipher.decrypt(encryptedResult, resultContext, LoginResponse.class);

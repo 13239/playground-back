@@ -5,6 +5,8 @@ import com.project.playground.auth.dto.internal.RefreshRotationResult;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import com.project.playground.global.security.session.RedisSession;
+import com.project.playground.domain.accesspolicy.redis.AccessPolicyScripts;
+import com.project.playground.domain.accesspolicy.redis.RedisAccessPolicyRepository;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ClassPathResource;
@@ -68,23 +70,27 @@ public class RedisSessionRepository {
      * - REPLACED: 이전 쿠키로 다른 로그인 조건을 요청했거나 공유 결과의 세션이 이미 변경됨
      * - CONFIRMATION_REQUIRED: 다른 유효 로그인이 있어 기존 세션을 유지한 채 교체 동의 필요
      */
-    private static final RedisScript<String> CREATE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/create.lua"), String.class);
+    private static final RedisScript<String> CREATE_SCRIPT = AccessPolicyScripts.script("redis/session/create.lua", "", String.class);
 
     /**
      * 사용자 활동 시 세션 만료 시간을 연장
      * 계정 차단 검증과 Hash 및 Sorted Set의 만료 정보 변경을 원자적으로 처리
      */
-    private static final RedisScript<Long> TOUCH_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/touch.lua"), Long.class);
+    private static final RedisScript<Long> TOUCH_SCRIPT = AccessPolicyScripts.script("redis/session/touch.lua",
+            "local gate = access_session(KEYS[1]); if gate ~= 1 then return gate end", Long.class);
 
     /**
      * 세션 정보 조회, 계정 차단 여부, 사용자별 목록 검증을 Redis에서 원자적으로 처리
      */
-    private static final RedisScript<List> FIND_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/find.lua"), List.class);
+    private static final String LIST_GUARD = "local gate = access_session(KEYS[1]); "
+            + "if gate == -2 then return {'ACCESS_RESTRICTED'} elseif gate == -3 then return {'ACCESS_POLICY_UNAVAILABLE'} "
+            + "elseif gate ~= 1 then return {} end";
+    private static final RedisScript<List> FIND_SCRIPT = AccessPolicyScripts.script("redis/session/find.lua", LIST_GUARD, List.class);
 
     /**
      * 계정 차단 여부와 기존 Refresh Token 해시·세대를 원자적으로 검증하고 회전·동일 결과 공유·재사용 세션 폐기
      */
-    private static final RedisScript<List> ROTATE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/rotate.lua"), List.class);
+    private static final RedisScript<List> ROTATE_SCRIPT = AccessPolicyScripts.script("redis/session/rotate.lua", LIST_GUARD, List.class);
 
     /**
      * 로그인 세션 삭제
@@ -103,6 +109,8 @@ public class RedisSessionRepository {
     private static final RedisScript<Long> UNBLOCK_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/unblock.lua"), Long.class);
 
     private final StringRedisTemplate redisTemplate;
+    // 모든 세션 작업이 같은 운영 정책 오류·안내 문구를 반환한다.
+    private final RedisAccessPolicyRepository accessPolicy;
 
     /**
      * 새로운 로그인 세션을 생성한다.
@@ -113,7 +121,7 @@ public class RedisSessionRepository {
      * 교체 동의가 있는 경우에만 기존 세션을 모두 종료하고 새로운 세션을 등록한다.
      */
     public Optional<String> create(RedisSession session, @Nullable LoginSessionReplacement replacement,
-                                   String encryptedResult, boolean replaceExistingSession) {
+                                   String encryptedResult, boolean replaceExistingSession, String roleCode, long accessVersion) {
         if (!session.getExpiresAt().isAfter(Instant.now())) {
             throw new IllegalArgumentException("세션 만료 시각이 올바르지 않습니다.");
         }
@@ -151,6 +159,8 @@ public class RedisSessionRepository {
          * ARGV[15]: 세션별 갱신 결과 Key 접두사
          * ARGV[16]: 로그인에서 소유를 증명한 브라우저 공개키 지문
          * ARGV[17]: 사용자가 기존 로그인 종료에 동의했는지 여부
+         * ARGV[18]: DB에서 확인한 현재 역할 코드
+         * ARGV[19]: 공유 잠금에서 확인한 19자리 접속 정책 버전
          */
         String result = redisTemplate.execute(
                 CREATE_SCRIPT,
@@ -180,7 +190,9 @@ public class RedisSessionRepository {
                 replacement == null || replacement.getRefreshRequestHash() == null ? "" : replacement.getRefreshRequestHash(),
                 REFRESH_RESULT_KEY_PREFIX,
                 session.getBrowserKeyThumbprint(),
-                Boolean.toString(replaceExistingSession)
+                Boolean.toString(replaceExistingSession),
+                // DB 공유 잠금에서 읽은 현재 역할·정책 버전을 세션에 결합한다.
+                roleCode, RedisAccessPolicyRepository.revision(accessVersion)
         );
 
         /*
@@ -198,6 +210,7 @@ public class RedisSessionRepository {
         if (result == null) {
             throw new IllegalStateException("로그인 세션을 생성하지 못했습니다.");
         }
+        accessPolicy.requireResult(result);
 
         if ("BLOCKED".equals(result)) {
             return Optional.empty();
@@ -257,6 +270,8 @@ public class RedisSessionRepository {
         if (result == null) {
             throw new IllegalStateException("세션 만료 시간 연장에 실패했습니다.");
         }
+        if (result == -2L) accessPolicy.requireResult("ACCESS_RESTRICTED");
+        if (result == -3L) accessPolicy.requireResult("ACCESS_POLICY_UNAVAILABLE");
 
         if (result == 0L) {
             return Optional.empty();
@@ -317,6 +332,7 @@ public class RedisSessionRepository {
         if (fields == null || fields.isEmpty()) {
             return Optional.empty();
         }
+        if (fields.size() == 1) accessPolicy.requireResult(String.valueOf(fields.getFirst()));
 
         if (fields.size() != 8 || fields.stream().anyMatch(value -> !(value instanceof String))) {
             throw new IllegalStateException("Redis 세션 데이터 형식이 올바르지 않습니다.");
@@ -435,6 +451,7 @@ public class RedisSessionRepository {
 
         if (result.isEmpty())
             return Optional.empty();
+        if (result.size() == 1) accessPolicy.requireResult(String.valueOf(result.getFirst()));
 
         // Lua에서 세션 Hash·사용자 목록·갱신 결과를 모두 폐기한 뒤에만 재사용 오류를 반환한다.
         if (result.size() == 1 && "REUSED".equals(result.getFirst())) {
@@ -483,6 +500,13 @@ public class RedisSessionRepository {
 
         return blocked;
     }
+
+    /** 역할 교체 전 기존 로그인만 폐기하며 비활성 계정의 차단 표식은 수정하지 않는다. */
+    public void revokeAll(Long userId) {
+        Long result = redisTemplate.execute(REVOKE_SCRIPT, List.of(buildUserSessionsKey(userId)), userId.toString(), KEY_PREFIX, REFRESH_RESULT_KEY_PREFIX);
+        if (result == null) throw new IllegalStateException("기존 로그인 종료를 확인하지 못했습니다.");
+    }
+    private static final RedisScript<Long> REVOKE_SCRIPT = RedisScript.of(new ClassPathResource("redis/session/revoke-all.lua"), Long.class);
 
     // 개별 로그인 세션의 Redis Key를 생성한다.
     private String buildKey(UUID sessionId) {

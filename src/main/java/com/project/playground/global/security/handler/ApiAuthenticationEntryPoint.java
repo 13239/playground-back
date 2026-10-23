@@ -33,6 +33,12 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
             return;
         }
 
+        // 운영상 접속 종료는 JWT 만료 갱신 루프에 들어가지 않도록 고유 코드와 검증된 문구로 반환한다.
+        if (authException instanceof AccessPolicyAuthenticationException policy) {
+            problemWriter.write(request, response, policy.getErrorCode(), policy.getMessage());
+            return;
+        }
+
         // 저장소·인증 서비스 장애에는 Bearer 인증 도전을 보내거나 잘못된 토큰으로 응답하지 않는다.
         if (authException instanceof AuthenticationServiceException) {
             problemWriter.write(request, response, ErrorCode.AUTH_SERVICE_UNAVAILABLE);
