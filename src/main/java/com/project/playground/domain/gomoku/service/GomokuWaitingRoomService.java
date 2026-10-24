@@ -51,6 +51,7 @@ public class GomokuWaitingRoomService {
     private final Clock gomokuClock;
     private final RedisSessionRepository sessions;
     private final GameAvailabilityService availability;
+    private final GomokuLobbyEvents lobbyEvents;
 
     // 만료된 마지막 참가자를 정리한 뒤 ROOM_CLOSED를 반환해도 실제 정리 트랜잭션은 커밋해야 한다.
     // 나머지 조회·입장 충돌은 변경 전 실패하므로 예외를 이유로 만료 정리를 되돌리지 않는다.
@@ -105,6 +106,8 @@ public class GomokuWaitingRoomService {
         members.add(member);
         members.forEach(p -> p.ready(false));
         room.participantsChanged(members.size());
+        // 정원 변경만 로비에 전달하고 접속 시간·준비 토글로 목록 조회를 발생시키지 않는다.
+        lobbyEvents.changed();
         return snapshot(room, members, userId);
     }
 
@@ -255,6 +258,7 @@ public class GomokuWaitingRoomService {
         membershipChanged(room, members);
         chatAccess.changed(room, members);
         events.changed(room.getId());
+        lobbyEvents.changed();
     }
 
     /** 아무도 다시 조회하지 않는 방도 정리한다. 후보 조회 뒤 복귀한 참가자는 최신 시각으로 보존한다. */
@@ -305,6 +309,7 @@ public class GomokuWaitingRoomService {
         // 비정상 종료 참가자를 청소할 때도 Redis 채팅 권한과 SSE 상태를 커밋된 명단으로 동기화한다.
         chatAccess.changed(room, members);
         events.changed(room.getId());
+        lobbyEvents.changed();
     }
 
     private void membershipChanged(GomokuRoom room, List<GomokuRoomParticipant> members) {

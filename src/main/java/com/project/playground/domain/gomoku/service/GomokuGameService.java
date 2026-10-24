@@ -36,6 +36,7 @@ public class GomokuGameService {
     private final GomokuGameEvents events;
     private final Clock gomokuClock;
     private final GameAvailabilityService availability;
+    private final GomokuLobbyEvents lobbyEvents;
 
     public void startIfReady(GomokuRoom room, List<GomokuRoomParticipant> members) {
         if (room.getStatus() == RoomStatus.WAITING && members.size() == 2 && members.stream().allMatch(GomokuRoomParticipant::isReady)) {
@@ -53,6 +54,8 @@ public class GomokuGameService {
                 member(members, (short) 1).getMembershipId(), member(members, (short) 2).getMembershipId(),
                 assigned, (short) RANDOM.nextInt(2), now));
         room.startPlaying();
+        // 대국 착수·무르기마다 알리지 않고 목록의 대기/게임 상태가 바뀔 때만 알린다.
+        lobbyEvents.changed();
         events.changed(room.getId());
         events.clockChanged(match);
         return match;
@@ -156,6 +159,7 @@ public class GomokuGameService {
         if (room.getStatus() != RoomStatus.PLAYING) return;
         var match = synchronize(room, members, null);
         if (match.getPhase() != GomokuMatch.Phase.FINISHED) match.finish((short) (3 - own(members, userId).getSeat()), GomokuMatch.FinishReason.RESIGN);
+        // 퇴장에 따른 로비 변경 알림은 호출자의 참가자 제거 처리에서 한 번만 발행한다.
         room.returnToWaiting(); touch(room);
         events.clockChanged(match);
     }

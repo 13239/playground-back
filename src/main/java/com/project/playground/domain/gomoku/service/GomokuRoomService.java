@@ -41,6 +41,7 @@ public class GomokuRoomService {
     private final GomokuRoomParticipantRepository participants;
     private final RoomChatAccessPublisher chatAccess;
     private final GameAvailabilityService availability;
+    private final GomokuLobbyEvents lobbyEvents;
 
     public RoomPageResponse search(Long userId, SearchRoomsRequest request) {
         rateLimits.search(userId);
@@ -87,6 +88,8 @@ public class GomokuRoomService {
             var hostMember = participants.saveAndFlush(GomokuRoomParticipant.builder().room(room).user(host).seat((short) 1)
                     .joinedAtMicros(chatAccess.nowMicros()).build());
             chatAccess.changed(room, List.of(hostMember));
+            // 트랜잭션이 커밋된 신규 방만 다른 로비에 표시한다.
+            lobbyEvents.changed();
             return HostedRoomResponse.from(room);
         } catch (DataIntegrityViolationException exception) {
             // 코드의 사전 확인과 고유 제약을 함께 사용한다. 드문 동시 충돌도 내부 SQL을 응답하지 않는다.
@@ -125,6 +128,7 @@ public class GomokuRoomService {
         participants.deleteAll(members);
         room.close();
         chatAccess.changed(room, List.of());
+        lobbyEvents.changed();
     }
 
     private User readActiveUser(Long id) {

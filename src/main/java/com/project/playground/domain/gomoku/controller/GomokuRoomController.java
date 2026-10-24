@@ -3,6 +3,8 @@ package com.project.playground.domain.gomoku.controller;
 import com.project.playground.domain.gomoku.dto.request.*;
 import com.project.playground.domain.gomoku.dto.response.*;
 import com.project.playground.domain.gomoku.service.GomokuRoomService;
+import com.project.playground.domain.gomoku.service.GomokuLobbyEvents;
+import com.project.playground.domain.gomoku.service.RoomRateLimitService;
 import com.project.playground.domain.gomoku.service.GomokuWaitingRoomService;
 import com.project.playground.global.security.session.Session;
 import jakarta.validation.Valid;
@@ -12,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /** BFF와 경로·메서드를 일치시켜 기존 Bearer·Redis·브라우저 증명 경계 안에서만 방을 관리한다. */
 @RestController
@@ -20,6 +24,8 @@ import org.springframework.web.bind.annotation.*;
 public class GomokuRoomController {
     private final GomokuRoomService rooms;
     private final GomokuWaitingRoomService waiting;
+    private final GomokuLobbyEvents lobbyEvents;
+    private final RoomRateLimitService limits;
 
     // 대기실 요청도 기존 BFF·JWT·브라우저 증명과 본인의 로그인 세션을 그대로 사용한다.
     // 참가 트랜잭션 이후 상세 스냅샷의 선택적 필드 검증에 실패해도 입장 성공을 실패로 표시하지 않는다.
@@ -65,6 +71,14 @@ public class GomokuRoomController {
         // 페이지 점유의 로그인 식별자는 요청 본문에서 받지 않고 검증된 인증 주체에서 전달한다.
         waiting.page(session.getId(), session.getSessionId(), request);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
+
+    /** 로비 화면을 열고 있는 로그인 사용자에게 변경 신호만 전달한다. 조회 조건은 SSE에 실지 않는다. */
+    @PostMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> events(@AuthenticationPrincipal(errorOnInvalidType = true) Session session) {
+        limits.events(session.getId());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("X-Accel-Buffering", "no")
+                .body(lobbyEvents.subscribe(session.getId(), session.getSessionId()));
     }
 
     @PostMapping("/search")
