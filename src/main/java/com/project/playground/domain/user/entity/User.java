@@ -83,6 +83,16 @@ public class User extends TimeEntity {
         this.profileAvatar = Objects.requireNonNull(profileAvatar, "프로필 캐릭터는 필수입니다.");
     }
 
+    /** 검증된 본인 닉네임만 변경하며 역할·아이디·프로필 이미지는 유지한다. */
+    public void changeNickname(String nickname) {
+        this.nickname = Objects.requireNonNull(nickname, "닉네임은 필수입니다.");
+    }
+
+    /** 비밀번호 검증 서비스가 생성한 인코딩 결과만 저장한다. */
+    public void changePassword(String encodedPassword) {
+        this.password = Objects.requireNonNull(encodedPassword, "비밀번호 해시는 필수입니다.");
+    }
+
     public void activate() {
         this.status = UserStatus.ACTIVE;
     }

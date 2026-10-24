@@ -45,4 +45,5 @@ redis.call('PEXPIRE', KEYS[4], ttl)
 redis.call('ZREM', KEYS[5], reservation)
 redis.call('ZADD', KEYS[5], expires, ARGV[4])
 redis.call('PEXPIRE', KEYS[5], tonumber(ARGV[9]))
-return {'OK', tostring(now), tostring(expires)}
+-- 홈 표시 경계가 같은 밀리초 안의 이전 메시지를 포함하지 않도록 발급 시각은 마이크로초까지 반환한다.
+return {'OK', string.format('%.0f', tonumber(clock[1]) * 1000000 + tonumber(clock[2])), tostring(expires)}

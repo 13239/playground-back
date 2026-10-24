@@ -5,6 +5,7 @@ import com.project.playground.domain.accesspolicy.AccessRestrictedException;
 import com.project.playground.domain.game.service.GameUnavailableException;
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
 import com.project.playground.auth.ratelimit.SignUpRateLimitException;
+import com.project.playground.auth.ratelimit.PasswordChangeRateLimitException;
 import com.project.playground.domain.gomoku.service.RoomRateLimitException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.TransientDataAccessException;
@@ -114,5 +115,11 @@ public class GlobalExceptionHandler {
                 .cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
                 .body(problem);
+    }
+
+    // 비밀번호 변경의 재시도 시간도 기존 공통 제한 응답으로 전달한다.
+    @ExceptionHandler(PasswordChangeRateLimitException.class)
+    public ResponseEntity<ProblemDetail> passwordChangeRateLimit(PasswordChangeRateLimitException exception) {
+        return rateLimitResponse(exception.getErrorCode(), exception.getRetryAfterSeconds());
     }
 }

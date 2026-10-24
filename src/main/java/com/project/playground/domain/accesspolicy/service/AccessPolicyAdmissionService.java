@@ -23,11 +23,14 @@ public class AccessPolicyAdmissionService {
     private final RedisSessionRepository sessions;
 
     @Transactional
-    public String create(RedisSession session, @Nullable LoginSessionReplacement replacement, String encryptedResult, boolean replace) {
+    public String create(RedisSession session, @Nullable LoginSessionReplacement replacement, String encryptedResult, boolean replace,
+                         String authenticatedPasswordHash) {
         roles.lockAuthorizationPolicyForAdmission().orElseThrow();
         var user = users.findForShareById(session.getId())
                 .filter(value -> value.getStatus() == UserStatus.ACTIVE && value.getDeletedAt() == null)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+        // 비밀번호 검증 뒤 변경 요청이 먼저 커밋했다면 이전 비밀번호로 새 세션을 발급하지 않는다.
+        if (!user.getPassword().equals(authenticatedPasswordHash)) throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         var policy = policies.findById(1L).orElseThrow();
         return sessions.create(session, replacement, encryptedResult, replace, user.getRoleCode(), policy.getVersion())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));

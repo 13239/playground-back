@@ -1,6 +1,7 @@
 package com.project.playground.domain.user.controller;
 
 import com.project.playground.domain.user.dto.request.UpdateProfileRequest;
+import com.project.playground.domain.user.dto.request.UpdateNicknameRequest;
 import com.project.playground.domain.user.dto.response.UserProfileResponse;
 import com.project.playground.domain.user.service.UserProfileService;
 import com.project.playground.global.security.session.Session;
@@ -37,5 +38,14 @@ public class UserProfileController {
         // 수정 대상은 검증된 세션에서만 가져오므로 다른 회원의 ID를 지정할 수 없다.
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(userProfileService.updateProfile(session.getId(), request));
+    }
+
+    /** 닉네임 수정도 기존 브라우저 증명·JWT·Redis 세션 검증을 통과한 본인에게만 허용한다. */
+    @PutMapping("/nickname")
+    public ResponseEntity<UserProfileResponse> updateNickname(
+            @AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+            @Valid @RequestBody UpdateNicknameRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(userProfileService.updateNickname(session.getId(), request));
     }
 }

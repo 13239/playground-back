@@ -19,6 +19,11 @@ public enum ErrorCode {
     SIGN_UP_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원가입 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
 
+    // 현재 비밀번호 오입력은 로그인 만료와 구분해 수정 중인 화면과 세션을 유지한다.
+    CURRENT_PASSWORD_INVALID(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    PASSWORD_UNCHANGED(HttpStatus.BAD_REQUEST, "새 비밀번호는 현재 비밀번호와 다르게 입력해 주세요."),
+    PASSWORD_CHANGE_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+
     // 관리자 정책 오류는 인증 실패와 구분하며 상세 내부 정보는 반환하지 않는다.
     ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "역할을 찾을 수 없습니다."),
     ROLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 존재하는 역할 코드입니다."),

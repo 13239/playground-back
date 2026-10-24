@@ -80,9 +80,11 @@ public class RedisChatTicketRepository {
                 properties.getOrigin(), properties.getWebsocketUrl(),
                 Long.toString(ChatTicketProperties.TICKET_TTL_MILLIS));
         requireSuccess(result);
+        // Redis 발급 시각의 마이크로초를 유지해 홈 방문의 표시 경계와 메시지 접수 시각을 같은 정밀도로 비교한다.
+        long issuedAtMicros = Long.parseLong(String.valueOf(result.get(1)));
         return ChatTicketResponse.builder()
                 .ticket(ticket)
-                .serverTime(Instant.ofEpochMilli(Long.parseLong(String.valueOf(result.get(1)))))
+                .serverTime(Instant.ofEpochSecond(issuedAtMicros / 1_000_000L, issuedAtMicros % 1_000_000L * 1_000L))
                 .expiresAt(Instant.ofEpochMilli(Long.parseLong(String.valueOf(result.get(2)))))
                 .websocketUrl(properties.getWebsocketUrl())
                 .proofRequired(properties.isProofRequired())
