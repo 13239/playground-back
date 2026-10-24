@@ -37,6 +37,7 @@ public class GomokuGameService {
     private final Clock gomokuClock;
     private final GameAvailabilityService availability;
     private final GomokuLobbyEvents lobbyEvents;
+    private final GomokuPlayerStatsService playerStats;
 
     public void startIfReady(GomokuRoom room, List<GomokuRoomParticipant> members) {
         if (room.getStatus() == RoomStatus.WAITING && members.size() == 2 && members.stream().allMatch(GomokuRoomParticipant::isReady)) {
@@ -94,14 +95,14 @@ public class GomokuGameService {
         String fingerprint = request.fingerprint();
         if (match.repeated(seat, request.getRequestId())) {
             if (!fingerprint.equals(match.previousCommand(seat))) throw failure(ErrorCode.GAME_STATE_CHANGED);
-            return WaitingRoomResponse.from(room, members, userId, match, gomokuClock.instant());
+            return response(room, members, userId, match);
         }
         // 이미 완료된 대국에 대한 기권/단절과 같은 참가자의 중복 재대국 요청은 수정·이벤트 없이 성공한다.
         if ((match.getPhase() == GomokuMatch.Phase.FINISHED
                 && (request.getAction() == GameActionRequest.Action.RESIGN || request.getAction() == GameActionRequest.Action.DISCONNECT))
                 || (request.getAction() == GameActionRequest.Action.REMATCH && match.getPhase() == GomokuMatch.Phase.FINISHED
                     && (seat == 1 ? match.isRematchOne() : match.isRematchTwo()))) {
-            return WaitingRoomResponse.from(room, members, userId, match, gomokuClock.instant());
+            return response(room, members, userId, match);
         }
         if (room.getRevision() != request.getRevision()) throw failure(ErrorCode.GAME_STATE_CHANGED);
         Instant now = gomokuClock.instant();
@@ -120,8 +121,8 @@ public class GomokuGameService {
                 if (result == GomokuRules.Result.OCCUPIED) throw failure(ErrorCode.GAME_POSITION_OCCUPIED);
                 if (result == GomokuRules.Result.FORBIDDEN) throw failure(ErrorCode.GAME_FORBIDDEN_MOVE);
                 match.move(seat, request.getX(), request.getY(), now);
-                if (result == GomokuRules.Result.WIN) match.finish(seat, GomokuMatch.FinishReason.FIVE);
-                else if (match.getMoves().size() == 400) match.finish((short) 0, GomokuMatch.FinishReason.BOARD_FULL);
+                if (result == GomokuRules.Result.WIN) finishWithStats(match, seat, GomokuMatch.FinishReason.FIVE);
+                else if (match.getMoves().size() == 400) finishWithStats(match, (short) 0, GomokuMatch.FinishReason.BOARD_FULL);
             }
             case UNDO_REQUEST -> {
                 requirePhase(match, GomokuMatch.Phase.PLAYING);
@@ -136,7 +137,7 @@ public class GomokuGameService {
                 if (request.getAccept()) match.acceptUndo(now); else match.clearUndo();
             }
             case RESIGN, DISCONNECT -> {
-                if (match.getPhase() != GomokuMatch.Phase.FINISHED) match.finish((short) (3 - seat),
+                if (match.getPhase() != GomokuMatch.Phase.FINISHED) finishWithStats(match, (short) (3 - seat),
                         request.getAction() == GameActionRequest.Action.RESIGN ? GomokuMatch.FinishReason.RESIGN : GomokuMatch.FinishReason.DISCONNECT);
             }
             case REMATCH -> {
@@ -158,7 +159,7 @@ public class GomokuGameService {
     public void departed(GomokuRoom room, List<GomokuRoomParticipant> members, Long userId) {
         if (room.getStatus() != RoomStatus.PLAYING) return;
         var match = synchronize(room, members, null);
-        if (match.getPhase() != GomokuMatch.Phase.FINISHED) match.finish((short) (3 - own(members, userId).getSeat()), GomokuMatch.FinishReason.RESIGN);
+        if (match.getPhase() != GomokuMatch.Phase.FINISHED) finishWithStats(match, (short) (3 - own(members, userId).getSeat()), GomokuMatch.FinishReason.RESIGN);
         // 퇴장에 따른 로비 변경 알림은 호출자의 참가자 제거 처리에서 한 번만 발행한다.
         room.returnToWaiting(); touch(room);
         events.clockChanged(match);
@@ -184,7 +185,7 @@ public class GomokuGameService {
         boolean twoGone = !match.getSeenTwo().plusSeconds(DISCONNECT_SECONDS).isAfter(now);
         if (oneGone || twoGone) {
             // 양쪽 동시 단절이나 긴 서버 정지는 특정 사용자 패배로 만들지 않는다.
-            match.finish((short) (oneGone && twoGone ? 0 : oneGone ? 2 : 1), oneGone && twoGone
+            finishWithStats(match, (short) (oneGone && twoGone ? 0 : oneGone ? 2 : 1), oneGone && twoGone
                     ? GomokuMatch.FinishReason.INTERRUPTED : GomokuMatch.FinishReason.DISCONNECT);
             return true;
         }
@@ -197,9 +198,21 @@ public class GomokuGameService {
         return changed;
     }
 
+    /** 방 잠금을 확보한 서비스의 종료 경로를 통합해 승·패·무를 한 트랜잭션에서 한 번만 기록한다. */
+    private void finishWithStats(GomokuMatch match, short winner, GomokuMatch.FinishReason reason) {
+        if (match.getPhase() == GomokuMatch.Phase.FINISHED) return;
+        match.finish(winner, reason);
+        playerStats.recordFinished(match);
+    }
+
     private WaitingRoomResponse snapshot(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer, GomokuMatch match) {
         chatAccess.changed(room, members);
-        return WaitingRoomResponse.from(room, members, viewer, match, gomokuClock.instant());
+        return response(room, members, viewer, match);
+    }
+
+    /** 중복 명령 응답은 채팅 리스·이벤트를 재발행하지 않고 공개 전적만 조회한다. */
+    private WaitingRoomResponse response(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer, GomokuMatch match) {
+        return WaitingRoomResponse.from(room, members, viewer, match, gomokuClock.instant(), playerStats.forMembers(members));
     }
     private void touch(GomokuRoom room) { room.participantsChanged(room.getPlayerCount()); events.changed(room.getId()); }
     private void requirePhase(GomokuMatch match, GomokuMatch.Phase phase) { if (match.getPhase() != phase) throw failure(ErrorCode.GAME_STATE_CHANGED); }

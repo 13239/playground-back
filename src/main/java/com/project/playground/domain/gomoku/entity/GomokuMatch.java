@@ -40,6 +40,8 @@ public class GomokuMatch {
     private short undoSeat;
     private Instant undoDeadline;
     private short winnerSeat;
+    // 기존 완료 대국은 마이그레이션에서 처리 완료로 표시해 과거 전적을 소급 집계하지 않는다.
+    @Column(name = "stats_recorded", nullable = false) private boolean statsRecorded;
     @Enumerated(EnumType.STRING) @Column(length = 16) private FinishReason finishReason;
     private boolean rematchOne;
     private boolean rematchTwo;
@@ -90,6 +92,8 @@ public class GomokuMatch {
     public void finish(short winner, FinishReason reason) {
         phase = Phase.FINISHED; winnerSeat = winner; finishReason = reason; deadline = null; clearUndo();
     }
+    /** 종료 판정과 같은 트랜잭션에서 통계 저장이 끝났다는 사실을 영속화한다. */
+    public void markStatsRecorded() { statsRecorded = true; }
     public int lastMove(short seat) {
         for (int i = moves.size() - 1; i >= 0; i--) if (moves.get(i).getSeat() == seat) return i;
         return -1;

@@ -52,6 +52,7 @@ public class GomokuWaitingRoomService {
     private final RedisSessionRepository sessions;
     private final GameAvailabilityService availability;
     private final GomokuLobbyEvents lobbyEvents;
+    private final GomokuPlayerStatsService playerStats;
 
     // 만료된 마지막 참가자를 정리한 뒤 ROOM_CLOSED를 반환해도 실제 정리 트랜잭션은 커밋해야 한다.
     // 나머지 조회·입장 충돌은 변경 전 실패하므로 예외를 이유로 만료 정리를 되돌리지 않는다.
@@ -338,7 +339,7 @@ public class GomokuWaitingRoomService {
         var game = games.synchronize(room, members, owner ? viewer : null);
         // 페이지 인증 전의 읽기 전용 조회는 Redis 참가 리스도 연장하지 않는다.
         if (owner && refreshAccess) chatAccess.changed(room, members);
-        return WaitingRoomResponse.from(room, members, viewer, game, gomokuClock.instant());
+        return WaitingRoomResponse.from(room, members, viewer, game, gomokuClock.instant(), playerStats.forMembers(members));
     }
 
     private BusinessException failure(ErrorCode code) { return new BusinessException(code); }
