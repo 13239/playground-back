@@ -52,13 +52,13 @@ public class GomokuGameEvents implements MessageListener {
         try { redis.convertAndSend(TOPIC, event.roomId.toString()); }
         catch (RuntimeException ignored) { notifyRoom(event.roomId); } // 주기적 인증 조회도 유실 알림을 복구한다.
     }
-    public synchronized SseEmitter subscribe(Long userId, UUID sessionId, Long roomId) {
+    public synchronized SseEmitter subscribe(Long userId, UUID sessionId, Long roomId, long revision) {
         long count = subscriptions.values().stream().filter(s -> s.userId.equals(userId)).count();
         if (count >= 4) throw new com.project.playground.global.exception.BusinessException(
                 com.project.playground.global.exception.ErrorCode.ROOM_RATE_LIMIT_EXCEEDED);
         var id = UUID.randomUUID();
         var emitter = new SseEmitter(20_000L);
-        var subscription = new Subscription(userId, sessionId, roomId, emitter);
+        var subscription = new Subscription(userId, sessionId, roomId, revision, emitter);
         subscriptions.put(id, subscription);
         Runnable remove = () -> subscriptions.remove(id);
         emitter.onCompletion(remove); emitter.onTimeout(() -> { remove.run(); emitter.complete(); }); emitter.onError(error -> remove.run());
@@ -77,15 +77,26 @@ public class GomokuGameEvents implements MessageListener {
     // 이벤트가 없는 대국도 제한을 빠르게 반영한다. 이 검사는 세션 수명을 연장하지 않는다.
     @Scheduled(fixedDelay = 2_000) public void heartbeat() { subscriptions.values().forEach(s -> send(s, false)); }
     private void send(Subscription subscription, boolean changed) {
+        // Heartbeat 전송/인증 확인과 Redis 변경 알림이 겹쳐도 변경 신호를 버리지 않는다.
+        // 알림에는 방 데이터가 없으므로 같은 연결의 여러 변경은 한 번의 조회 신호로 합친다.
+        if (changed) subscription.changedPending.set(true);
         if (!subscription.sending.compareAndSet(false, true)) return;
         writes.execute(() -> {
             try {
-                if (sessions.findBySessionId(subscription.sessionId, subscription.userId).isEmpty()) {
-                    subscription.emitter.complete();
-                    subscriptions.values().remove(subscription);
-                    return;
-                }
-                subscription.emitter.send(changed ? SseEmitter.event().name("changed").data("refresh") : SseEmitter.event().comment("heartbeat"));
+                do {
+                    boolean notifyChanged = subscription.changedPending.getAndSet(false);
+                    boolean notifyReady = subscription.readyPending.getAndSet(false);
+                    if (sessions.findBySessionId(subscription.sessionId, subscription.userId).isEmpty()) {
+                        subscription.emitter.complete();
+                        subscriptions.values().remove(subscription);
+                        return;
+                    }
+                    subscription.emitter.send(notifyChanged
+                            ? SseEmitter.event().name("changed").data("refresh")
+                            : notifyReady ? SseEmitter.event().name("ready").data(subscription.revision)
+                            : SseEmitter.event().comment("heartbeat"));
+                    // 변경 알림이 전송 중 도착했다면 Heartbeat보다 우선해 바로 이어서 알린다.
+                } while (subscription.changedPending.get());
             }
             catch (IOException | IllegalStateException error) {
                 // 끊긴 응답의 ASYNC 오류 종료는 Servlet 컨테이너가 담당한다. 중복 completeWithError를 호출하지 않는다.
@@ -96,7 +107,11 @@ public class GomokuGameEvents implements MessageListener {
                 subscriptions.values().remove(subscription);
                 subscription.emitter.complete();
             }
-            finally { subscription.sending.set(false); }
+            finally {
+                subscription.sending.set(false);
+                // 루프가 종료되는 순간 새 이벤트가 들어오는 경합도 다시 전송한다.
+                if (subscription.changedPending.get() && subscriptions.containsValue(subscription)) send(subscription, false);
+            }
         });
     }
     @PreDestroy public void close() { subscriptions.values().forEach(s -> s.emitter.complete()); writes.close(); }
@@ -106,8 +121,13 @@ public class GomokuGameEvents implements MessageListener {
     @Getter @Builder
     public static final class ClockChanged { private final Long roomId; private final Instant deadline; }
     private static final class Subscription {
-        private final Long userId; private final UUID sessionId; private final Long roomId; private final SseEmitter emitter;
+        private final Long userId; private final UUID sessionId; private final Long roomId; private final long revision; private final SseEmitter emitter;
         private final AtomicBoolean sending = new AtomicBoolean();
-        private Subscription(Long userId, UUID sessionId, Long roomId, SseEmitter emitter) { this.userId = userId; this.sessionId = sessionId; this.roomId = roomId; this.emitter = emitter; }
+        private final AtomicBoolean changedPending = new AtomicBoolean();
+        // 최초 연결에만 보낼 최신 revision이다. 일치하면 클라이언트는 DB를 다시 읽지 않는다.
+        private final AtomicBoolean readyPending = new AtomicBoolean(true);
+        private Subscription(Long userId, UUID sessionId, Long roomId, long revision, SseEmitter emitter) {
+            this.userId = userId; this.sessionId = sessionId; this.roomId = roomId; this.revision = revision; this.emitter = emitter;
+        }
     }
 }

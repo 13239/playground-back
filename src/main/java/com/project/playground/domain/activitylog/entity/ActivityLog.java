@@ -49,6 +49,13 @@ public class ActivityLog {
     @Column(columnDefinition = "json")
     private String detail;
 
+    // 입력 당시 식별자의 검색 전용 가상 컬럼이다. 기존 로그 저장 입력·스냅샷은 변경하지 않는다.
+    @Column(name = "search_username", length = 50, insertable = false, updatable = false)
+    private String searchUsername;
+
+    @Column(name = "search_nickname", length = 50, insertable = false, updatable = false)
+    private String searchNickname;
+
     // 비동기 저장 시각이 아닌 요청에서 활동이 발생한 시각. 회원 생성 시각과 같은 한국 시간으로 저장한다.
     @Column(name = "occurred_at", nullable = false)
     private LocalDateTime occurredAt;

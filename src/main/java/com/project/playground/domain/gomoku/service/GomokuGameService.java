@@ -116,6 +116,8 @@ public class GomokuGameService {
             }
             case MOVE -> {
                 requirePhase(match, GomokuMatch.Phase.PLAYING);
+                // 상대 브라우저가 무르기 팝업을 아직 받지 못한 순간에도 착수로 요청을 몰래 소멸시키지 않는다.
+                if (match.getUndoSeat() != 0) throw failure(ErrorCode.GAME_UNDO_UNAVAILABLE);
                 if (match.getTurnSeat() != seat) throw failure(ErrorCode.GAME_NOT_YOUR_TURN);
                 var result = GomokuRules.evaluate(match.getMoves(), match.getBlackSeat(), seat, request.getX(), request.getY(), room.getForbiddenRule());
                 if (result == GomokuRules.Result.OCCUPIED) throw failure(ErrorCode.GAME_POSITION_OCCUPIED);

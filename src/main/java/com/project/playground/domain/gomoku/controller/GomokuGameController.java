@@ -32,9 +32,10 @@ public class GomokuGameController {
         // 소유하지 않은 탭은 SSE 구독을 만들거나 게임 접속 시간을 갱신할 수 없다.
         if (request.getPageId() == null) throw new com.project.playground.global.exception.BusinessException(
                 com.project.playground.global.exception.ErrorCode.ROOM_PAGE_IN_USE);
-        waiting.state(session.getId(), request.getRoomId(), request.getPageId());
+        // 첫 이벤트에 조회 시점의 revision을 보내 재연결 사이에 놓친 변경만 다시 읽게 한다.
+        var state = waiting.state(session.getId(), request.getRoomId(), request.getPageId());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("X-Accel-Buffering", "no")
                 // 연결 이후에도 같은 로그인 세션의 운영 제한·로그아웃·만료를 재확인한다.
-                .body(events.subscribe(session.getId(), session.getSessionId(), request.getRoomId()));
+                .body(events.subscribe(session.getId(), session.getSessionId(), request.getRoomId(), state.getRevision()));
     }
 }

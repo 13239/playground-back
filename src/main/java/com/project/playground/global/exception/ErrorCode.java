@@ -28,6 +28,10 @@ public enum ErrorCode {
     PASSWORD_UNCHANGED(HttpStatus.BAD_REQUEST, "새 비밀번호는 현재 비밀번호와 다르게 입력해 주세요."),
     PASSWORD_CHANGE_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."),
 
+    // 로그 조회는 인증 만료와 구분하고 저장소·파싱 오류의 원문을 공개하지 않는다.
+    ADMIN_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "로그 기록을 찾을 수 없습니다."),
+    ADMIN_LOG_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "로그 기록을 일시적으로 조회할 수 없습니다."),
+
     // 관리자 정책 오류는 인증 실패와 구분하며 상세 내부 정보는 반환하지 않는다.
     ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "역할을 찾을 수 없습니다."),
     ROLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 존재하는 역할 코드입니다."),

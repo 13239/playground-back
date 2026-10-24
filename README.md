@@ -1,6 +1,8 @@
 # Playground Backend
 
-유저 관리·개인정보 마스킹/감사·본인 닉네임 변경 이력은 [5단계 안내](docs/user-management-stage5.md)를 따른다. 백엔드 재시작 시 새 Flyway V16을 적용하며 기존 이름을 과거 변경 이력으로 소급 생성하지 않는다.
+사용자 활동 로그·관리자 작업 기록 조회는 [6단계 안내](docs/admin-logs-stage6.md)를 따른다. `/admin/logs` 화면과 함께 반영하고 백엔드 재시작으로 검색 인덱스 Flyway V18을 적용한다.
+
+유저 관리·권한에 따른 개인정보 조회/감사·본인 닉네임 변경 이력은 [5단계 안내](docs/user-management-stage5.md)를 따른다. 백엔드 재시작 시 Flyway V16을 적용하며 기존 이름을 과거 변경 이력으로 소급 생성하지 않는다.
 
 관리자 UI와 BFF 연결, 관리자 검색·세션 서명 변경은 [4단계 안내](docs/admin-ui-stage4.md)를 따른다. 기존 권한·접속 제한·게임 카탈로그 API와 감사/버전 검증을 재사용한다.
 
