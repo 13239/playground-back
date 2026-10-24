@@ -66,6 +66,11 @@ public class User extends TimeEntity {
     @Column(name = "role_version", nullable = false)
     private long roleVersion;
 
+    // 상태·프로필·역할 변경을 포함한 오래된 관리자 편집을 거절하며 기존 역할 전용 버전은 유지한다.
+    @Version
+    @Column(name = "management_version", nullable = false)
+    private long managementVersion;
+
     @Builder
     public User(String nickname, String username, String password, String email, String phone, LocalDate birthday, Gender gender, UserStatus status) {
         this.nickname = nickname;

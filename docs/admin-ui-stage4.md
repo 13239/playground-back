@@ -1,5 +1,7 @@
 # 관리자 UI 연결 (4단계)
 
+후속 [5단계 유저 관리](user-management-stage5.md)가 구현되어 회원 API·닉네임 이력과 V16 마이그레이션을 추가했다. 아래는 4단계 변경 기록이다.
+
 Next.js의 `/admin`과 공통 헤더 설정 아이콘을 권한·접속 정책·게임 API에 연결했다. [화면/BFF 계약](../../../front/playground/docs/admin-stage4.md)을 함께 따른다.
 
 ## 이번 서버 변경

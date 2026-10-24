@@ -6,12 +6,17 @@ import com.project.playground.domain.user.dto.response.UserProfileResponse;
 import com.project.playground.domain.user.entity.User;
 import com.project.playground.domain.user.enums.UserStatus;
 import com.project.playground.domain.user.repository.UserRepository;
+import com.project.playground.domain.user.repository.UserNicknameHistoryRepository;
+import com.project.playground.domain.user.entity.UserNicknameHistory;
 import com.project.playground.domain.user.repository.reader.UserReader;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Objects;
 
 /** 인증된 본인 계정만 조회·변경하고 프로필 조회로 Redis 세션 만료를 연장하지 않는다. */
 @Service
@@ -22,6 +27,7 @@ public class UserProfileService {
     private final UserReader userReader;
     private final UserRepository userRepository;
     private final ChatProfilePublisher chatProfiles;
+    private final UserNicknameHistoryRepository nicknameHistory;
 
     public UserProfileResponse getProfile(Long userId) {
         return UserProfileResponse.from(userReader.findActiveById(userId)
@@ -58,7 +64,14 @@ public class UserProfileService {
         User user = userRepository.findForUpdateById(userId)
                 .filter(value -> value.getDeletedAt() == null && value.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        // 같은 이름 재저장은 이력을 만들거나 채팅 알림 세대를 증가시키지 않는다.
+        if (Objects.equals(user.getNickname(), request.getNickname())) return UserProfileResponse.from(user);
+        String previous = user.getNickname();
         user.changeNickname(request.getNickname());
+        // 회원 행 잠금 안에서 변경과 이력을 함께 저장한다. 이력 저장 실패 시 닉네임 변경도 롤백된다.
+        nicknameHistory.saveAndFlush(UserNicknameHistory.builder().userId(userId).actorUserId(userId)
+                .previousNickname(previous).newNickname(user.getNickname())
+                .changedAt(LocalDateTime.now(ZoneId.of("Asia/Seoul"))).build());
         UserProfileResponse profile = UserProfileResponse.from(user);
         chatProfiles.afterCommit(userId, profile);
         return profile;

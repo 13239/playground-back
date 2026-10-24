@@ -7,6 +7,10 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum ErrorCode {
+    // 회원 운영의 버전 충돌과 본인 비활성화 금지를 인증 실패/재로그인과 구분한다.
+    USER_MANAGEMENT_CHANGED(HttpStatus.CONFLICT, "회원 정보가 변경되었습니다. 최신 내용을 불러온 뒤 다시 시도해 주세요."),
+    USER_SELF_OPERATION_NOT_ALLOWED(HttpStatus.CONFLICT, "현재 로그인한 본인 계정은 비활성화할 수 없습니다."),
+    USER_MANAGEMENT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원 관리 서비스를 일시적으로 이용할 수 없습니다."),
 
     // 요청 DTO 검증 및 JSON 역직렬화 오류
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "입력값이 올바르지 않습니다."),
