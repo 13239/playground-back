@@ -22,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.List;
 
 /** 방장 신원·고정 규칙·초대 코드를 서버가 관리하며 읽기로 로그인 세션 수명을 연장하지 않는다. */
@@ -44,12 +45,14 @@ public class GomokuRoomService {
     public RoomPageResponse search(Long userId, SearchRoomsRequest request) {
         rateLimits.search(userId);
         userReader.findActiveById(userId).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        long total = roomQueries.count(request);
+        // 개수·페이지에 같은 접속 마감 기준을 사용해 경계 시점의 총 개수 불일치를 방지한다.
+        Instant now = Instant.now();
+        long total = roomQueries.count(request, now);
         int pages = (int) Math.ceil((double) total / GomokuRoomQueryRepository.PAGE_SIZE);
         int page = Math.min(request.getPage(), Math.max(0, pages - 1));
-        return RoomPageResponse.builder().rooms(roomQueries.search(userId, request, page)).page(page)
+        return RoomPageResponse.builder().rooms(roomQueries.search(userId, request, page, now)).page(page)
                 .pageSize(GomokuRoomQueryRepository.PAGE_SIZE).totalElements(total).totalPages(pages)
-                .joinedRoom(participants.findCurrent(userId).map(p -> HostedRoomResponse.from(p.getRoom())).orElse(null))
+                .joinedRoom(participants.findCurrent(userId).map(p -> JoinedRoomResponse.from(p.getRoom())).orElse(null))
                 .hostedRoom(rooms.findByHostIdAndStatusNot(userId, RoomStatus.CLOSED).map(HostedRoomResponse::from).orElse(null)).build();
     }
 

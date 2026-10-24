@@ -22,10 +22,14 @@ public class GomokuRoomController {
     private final GomokuWaitingRoomService waiting;
 
     // 대기실 요청도 기존 BFF·JWT·브라우저 증명과 본인의 로그인 세션을 그대로 사용한다.
+    // 참가 트랜잭션 이후 상세 스냅샷의 선택적 필드 검증에 실패해도 입장 성공을 실패로 표시하지 않는다.
+    // 입장 자체의 권한·정원·강퇴 검증은 기존 waiting.join()에서 그대로 처리한다.
     @PostMapping("/join")
-    public ResponseEntity<WaitingRoomResponse> join(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
-                                                   @Valid @RequestBody JoinRoomRequest request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.join(session.getId(), request));
+    public ResponseEntity<JoinRoomReceiptResponse> join(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                                        @Valid @RequestBody JoinRoomRequest request) {
+        WaitingRoomResponse joined = waiting.join(session.getId(), request);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(JoinRoomReceiptResponse.builder().roomId(joined.getId()).build());
     }
 
     @PostMapping("/state")
@@ -38,6 +42,13 @@ public class GomokuRoomController {
     public ResponseEntity<WaitingRoomResponse> ready(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                                     @Valid @RequestBody ReadyRoomRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.ready(session.getId(), request.getRoomId(), request.getReady(), request.getPageId()));
+    }
+
+    /** 강퇴는 현재 방장의 문서와 최신 참가 상태를 검증해 상대 한 명에게만 적용한다. */
+    @PostMapping("/kick")
+    public ResponseEntity<WaitingRoomResponse> kick(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                                     @Valid @RequestBody KickRoomRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.kick(session.getId(), request));
     }
 
     @PostMapping("/leave")

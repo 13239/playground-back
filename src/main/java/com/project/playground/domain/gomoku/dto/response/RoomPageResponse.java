@@ -15,5 +15,5 @@ public class RoomPageResponse {
     private final int totalPages;
     private final HostedRoomResponse hostedRoom;
     // 방장이 아니어도 현재 참가한 대기실로 복귀할 수 있도록 본인의 방만 별도로 안내한다.
-    private final HostedRoomResponse joinedRoom;
+    private final JoinedRoomResponse joinedRoom;
 }

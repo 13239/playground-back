@@ -68,6 +68,11 @@ public enum ErrorCode {
     ROOM_PASSWORD_REQUIRED(HttpStatus.BAD_REQUEST, "비공개 방 비밀번호를 입력해 주세요."),
     ROOM_PASSWORD_INVALID(HttpStatus.BAD_REQUEST, "방 비밀번호가 올바르지 않습니다."),
     ROOM_NOT_FULL(HttpStatus.CONFLICT, "상대가 입장한 뒤 준비해 주세요."),
+    // 강퇴된 기존 페이지는 종료하되 재참가 허용 여부를 분리해 사용자에게 명확히 안내한다.
+    ROOM_KICKED(HttpStatus.FORBIDDEN, "방장에 의해 강퇴되었습니다. 이 방에는 다시 입장할 수 없습니다."),
+    ROOM_KICKED_REJOIN_ALLOWED(HttpStatus.FORBIDDEN, "방장에 의해 강퇴되었습니다. 이 방에 다시 참여할 수 있습니다."),
+    ROOM_KICK_FORBIDDEN(HttpStatus.FORBIDDEN, "상대 강퇴는 대기 중인 방장만 할 수 있습니다."),
+    ROOM_KICK_TARGET_CHANGED(HttpStatus.CONFLICT, "참가자 정보가 변경되었습니다. 확인 후 다시 시도해 주세요."),
 
     // 대국의 늦은 명령과 금수를 구분해 정상 로그인이나 진행 중인 판을 폐기하지 않는다.
     GAME_STATE_CHANGED(HttpStatus.CONFLICT, "대국 상태가 변경되었습니다. 현재 판을 확인하고 다시 시도해 주세요."),

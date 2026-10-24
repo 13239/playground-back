@@ -28,7 +28,9 @@ public class RoomRateLimitService {
     public void close(Long userId) { acquire(userId, "close", 30, 60_000); }
     // 대기실 조회는 2초 간격 동기화를 허용하고 비밀번호 검증·준비 변경은 별도 예산으로 제한한다.
     public void state(Long userId) { acquire(userId, "state", 120, 60_000); }
-    public void join(Long userId) { acquire(userId, "join", 20, 300_000); }
+    public void join(Long userId) { acquire(userId, "join", 20, 180_000); }
+    // 방장 강퇴는 준비·퇴장과 별도 계정 예산으로 제한한다.
+    public void kick(Long userId) { acquire(userId, "kick", 15, 60_000); }
     public void ready(Long userId) { acquire(userId, "ready", 30, 60_000); }
     public void leave(Long userId) { acquire(userId, "leave", 30, 60_000); }
     // 문서 열기·닫기는 상태 폴링과 별개이며 종료 알림의 중복 전송도 제한한다.

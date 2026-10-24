@@ -13,7 +13,7 @@ import lombok.Getter;
 import java.util.List;
 import java.time.Instant;
 
-/** 참가자에게만 코드와 준비 상태를 제공한다. 고정 규칙은 서버 상수이며 실제 시작한 대국만 공개한다. */
+/** 방장에게만 초대 코드를 제공한다. 고정 규칙은 서버 상수이며 실제 시작한 대국만 공개한다. */
 @Getter @Builder
 public class WaitingRoomResponse {
     private final Long id;
@@ -38,7 +38,9 @@ public class WaitingRoomResponse {
     }
 
     public static WaitingRoomResponse from(GomokuRoom room, List<GomokuRoomParticipant> members, Long viewer, GomokuMatch game, Instant now) {
-        return WaitingRoomResponse.builder().id(room.getId()).title(room.getTitle()).inviteCode(room.getInviteCode())
+        // 일반 참가자에게는 JSON 응답에서도 초대 코드를 전달하지 않는다. 방장 위임은 현재 방장 ID를 기준으로 즉시 반영한다.
+        return WaitingRoomResponse.builder().id(room.getId()).title(room.getTitle())
+                .inviteCode(room.getHost().getId().equals(viewer) ? room.getInviteCode() : null)
                 .status(room.getStatus()).serverTime(now).game(game == null ? null : MatchResponse.from(game, now))
                 .visibility(room.getVisibility()).undoLimit(room.getUndoLimit()).forbiddenRule(room.getForbiddenRule())
                 .boardSize(20).turnSeconds(30).revision(room.getRevision())

@@ -2,13 +2,16 @@ package com.project.playground.domain.gomoku.service;
 
 import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.domain.gomoku.dto.request.JoinRoomRequest;
+import com.project.playground.domain.gomoku.dto.request.KickRoomRequest;
 import com.project.playground.domain.gomoku.dto.request.RoomPageRequest;
 import com.project.playground.domain.gomoku.dto.response.WaitingRoomResponse;
 import com.project.playground.domain.gomoku.entity.GomokuRoom;
+import com.project.playground.domain.gomoku.entity.GomokuRoomKick;
 import com.project.playground.domain.gomoku.entity.GomokuRoomParticipant;
 import com.project.playground.domain.gomoku.enums.RoomStatus;
 import com.project.playground.domain.gomoku.enums.RoomVisibility;
 import com.project.playground.domain.gomoku.repository.GomokuRoomParticipantRepository;
+import com.project.playground.domain.gomoku.repository.GomokuRoomKickRepository;
 import com.project.playground.domain.gomoku.repository.GomokuRoomRepository;
 import com.project.playground.domain.user.entity.User;
 import com.project.playground.domain.user.enums.UserStatus;
@@ -38,6 +41,7 @@ public class GomokuWaitingRoomService {
     private static final int PAGE_CLOSE_GRACE_SECONDS = 5;
     private final GomokuRoomRepository rooms;
     private final GomokuRoomParticipantRepository participants;
+    private final GomokuRoomKickRepository kicks;
     private final UserRepository users;
     private final PasswordEncoder passwords;
     private final RoomRateLimitService limits;
@@ -48,6 +52,9 @@ public class GomokuWaitingRoomService {
     private final RedisSessionRepository sessions;
     private final GameAvailabilityService availability;
 
+    // 만료된 마지막 참가자를 정리한 뒤 ROOM_CLOSED를 반환해도 실제 정리 트랜잭션은 커밋해야 한다.
+    // 나머지 조회·입장 충돌은 변경 전 실패하므로 예외를 이유로 만료 정리를 되돌리지 않는다.
+    @Transactional(timeout = 5, isolation = Isolation.READ_COMMITTED, noRollbackFor = BusinessException.class)
     public WaitingRoomResponse join(Long userId, JoinRoomRequest request) {
         limits.join(userId);
         User user = activeUser(userId);
@@ -66,6 +73,9 @@ public class GomokuWaitingRoomService {
             throw failure(ErrorCode.ROOM_ALREADY_JOINED);
         }
         GomokuRoom room = openRoom(roomId);
+        // 방 행 잠금 안에서 이전 강퇴 정책을 읽어 영구 차단과 재참가 허용을 구분한다.
+        var previousKick = kicks.findByRoomIdAndUserId(roomId, userId);
+        if (previousKick.isPresent() && previousKick.get().isReentryBlocked()) throw failure(ErrorCode.ROOM_KICKED);
         var members = new ArrayList<>(participants.findMembers(roomId));
         var existing = members.stream().filter(p -> p.getUser().getId().equals(userId)).findFirst();
         if (existing.isPresent()) {
@@ -86,6 +96,8 @@ public class GomokuWaitingRoomService {
         }
         if (members.size() >= 2) throw failure(ErrorCode.ROOM_FULL);
         short seat = (short) (members.stream().anyMatch(p -> p.getSeat() == 1) ? 2 : 1);
+        // 재참가 허용 강퇴 기록은 새로운 유효 입장에 한해서 지운다. 이후 강퇴 시 고유 제약과 충돌하지 않는다.
+        previousKick.ifPresent(kicks::delete);
         // 삭제와 새 좌석 INSERT 순서를 고정해 만료 참가자의 고유 제약이 새 입장을 막지 않게 한다.
         participants.flush();
         var member = participants.save(GomokuRoomParticipant.builder().room(room).user(user).seat(seat)
@@ -100,6 +112,10 @@ public class GomokuWaitingRoomService {
         limits.state(userId);
         GomokuRoom room = openRoom(roomId);
         var members = new ArrayList<>(participants.findMembers(roomId));
+        // 재입장 가능 여부에 따라 다른 안내를 전달하되 참가가 해제된 기존 페이지는 모두 종료한다.
+        kicks.findByRoomIdAndUserId(roomId, userId).ifPresent(kick -> {
+            throw failure(kick.isReentryBlocked() ? ErrorCode.ROOM_KICKED : ErrorCode.ROOM_KICKED_REJOIN_ALLOWED);
+        });
         var own = requireMember(members, userId);
         // pageId 없는 첫 조회는 참가 식별자를 찾기 위한 읽기 전용 요청이다.
         // 페이지를 소유하지 않은 탭은 대국 연결 만료와 준비 상태를 변경하거나 SSE를 이용할 수 없다.
@@ -141,6 +157,29 @@ public class GomokuWaitingRoomService {
         games.startIfReady(room, members);
         // 준비 상태가 그대로라면 SSE 알림과 Redis 발행을 반복하지 않는다. 대국 시작은 게임 서비스가 발행한다.
         if (room.getStatus() == RoomStatus.WAITING && previousReady != own.isReady()) events.changed(roomId);
+        return snapshot(room, members, userId);
+    }
+
+    /** 방장 권한·점유 페이지·스냅샷 revision·목표 좌석을 잠금 안에서 확인한다. */
+    public WaitingRoomResponse kick(Long userId, KickRoomRequest request) {
+        limits.kick(userId);
+        activeUser(userId);
+        var room = openRoom(request.getRoomId());
+        if (room.getStatus() != RoomStatus.WAITING || !room.getHost().getId().equals(userId)) {
+            throw failure(ErrorCode.ROOM_KICK_FORBIDDEN);
+        }
+        var members = new ArrayList<>(participants.findMembers(room.getId()));
+        var host = requireMember(members, userId);
+        if (!host.ownsPage(request.getPageId())) throw failure(ErrorCode.ROOM_PAGE_IN_USE);
+        // 방 상태가 변했으면 같은 좌석에 새로 입장한 다른 참가자를 잘못 강퇴하지 않는다.
+        if (room.getRevision() != request.getRevision()) throw failure(ErrorCode.ROOM_KICK_TARGET_CHANGED);
+        var target = members.stream().filter(p -> p.getSeat() == request.getSeat() && !p.getUser().getId().equals(userId))
+                .findFirst().orElseThrow(() -> failure(ErrorCode.ROOM_KICK_TARGET_CHANGED));
+        // 강퇴된 페이지에는 즉시 이탈을 알리고, 방장이 선택한 재참가 정책만 이후 입장에 적용한다.
+        kicks.save(GomokuRoomKick.builder().room(room).userId(target.getUser().getId())
+                .reentryBlocked(request.getBlockRejoin()).build());
+        // 참가 제거·채팅 권한 회수·참가 순서 변경 및 이벤트 발행은 기존 퇴장 처리와 같다.
+        removeMember(room, members, target);
         return snapshot(room, members, userId);
     }
 
@@ -263,6 +302,9 @@ public class GomokuWaitingRoomService {
         participants.deleteAll(stale);
         members.removeAll(stale);
         membershipChanged(room, members);
+        // 비정상 종료 참가자를 청소할 때도 Redis 채팅 권한과 SSE 상태를 커밋된 명단으로 동기화한다.
+        chatAccess.changed(room, members);
+        events.changed(room.getId());
     }
 
     private void membershipChanged(GomokuRoom room, List<GomokuRoomParticipant> members) {
