@@ -17,7 +17,7 @@ import java.security.*;
 import java.time.Duration;
 import java.util.*;
 
-/** 고정된 내부 채팅 경로만 호출하고 권한 확인 후의 요청에 짧은 일회용 증명을 부여한다. */
+/** 관리자 조회와 운영 점검의 고정된 내부 채팅 경로만 호출하고 짧은 일회용 증명을 부여한다. */
 @Component
 public class AdminChatClient {
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -45,7 +45,8 @@ public class AdminChatClient {
 
     public <T> T get(String path, Class<T> type) {
         if (origin == null) throw unavailable();
-        if (!path.matches("/internal/admin/chat/messages(?:\\?[^#\\r\\n]*|/[a-f0-9]{24})?")) throw new IllegalArgumentException("허용되지 않은 내부 경로");
+        // 운영 점검은 쿼리 없는 health 한 경로만 추가한다. 임의의 내부 URL로 확장하지 않는다.
+        if (!path.equals("/internal/admin/chat/health") && !path.matches("/internal/admin/chat/messages(?:\\?[^#\\r\\n]*|/[a-f0-9]{24})?")) throw new IllegalArgumentException("허용되지 않은 내부 경로");
         byte[] bytes = new byte[32]; RANDOM.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         String key = "chat:admin:capability:" + digest(token);

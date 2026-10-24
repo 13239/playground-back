@@ -11,6 +11,7 @@ import com.project.playground.auth.dto.response.CurrentSessionResponse;
 import com.project.playground.auth.dto.response.LoginResponse;
 import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.service.AuthService;
+import com.project.playground.domain.adminmonitor.service.SitePresenceService;
 import com.project.playground.global.security.session.Session;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,6 +31,9 @@ public class AuthController {
     private final LoginClientIpResolver loginClientIpResolver;
 
     private final BrowserProofService browserProofService;
+
+    // 모든 페이지의 기존 인증 확인 주기를 재사용하며 별도 로그인 토큰이나 채팅 연결을 만들지 않는다.
+    private final SitePresenceService sitePresence;
 
     // 인증 데이터 없이 nonce만 발급하며 세션·토큰·사용자 활동을 변경하지 않는다.
     @PostMapping("/proof-challenge")
@@ -83,6 +87,7 @@ public class AuthController {
     // 현재 요청에서 검증한 Redis 세션으로 사용자 식별 정보와 세션 유지 정책을 반환한다.
     @GetMapping("/session")
     public ResponseEntity<CurrentSessionResponse> session(@AuthenticationPrincipal(errorOnInvalidType = true) Session session) {
+        sitePresence.confirm(session.getId());
         CurrentSessionResponse currentSessionResponse = CurrentSessionResponse.from(session);
 
         return ResponseEntity.ok()
