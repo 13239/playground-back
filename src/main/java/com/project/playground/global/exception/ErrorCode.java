@@ -31,6 +31,9 @@ public enum ErrorCode {
     // 로그 조회는 인증 만료와 구분하고 저장소·파싱 오류의 원문을 공개하지 않는다.
     ADMIN_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "로그 기록을 찾을 수 없습니다."),
     ADMIN_LOG_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "로그 기록을 일시적으로 조회할 수 없습니다."),
+    // 채팅 저장소의 미존재와 일시 장애를 별도로 표시한다.
+    ADMIN_CHAT_NOT_FOUND(HttpStatus.NOT_FOUND, "채팅 기록을 찾을 수 없습니다."),
+    ADMIN_CHAT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "채팅 기록을 일시적으로 조회할 수 없습니다."),
 
     // 관리자 정책 오류는 인증 실패와 구분하며 상세 내부 정보는 반환하지 않는다.
     ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "역할을 찾을 수 없습니다."),
