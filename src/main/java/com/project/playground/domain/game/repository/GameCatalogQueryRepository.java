@@ -67,7 +67,12 @@ public class GameCatalogQueryRepository {
         var where = new BooleanBuilder();
         if (publicOnly) where.and(genre.enabled.isTrue());
         String search = escapedSearch(searchText);
-        if (search != null) where.and(genre.name.lower().like(search, '!').or(genre.code.lower().like(search, '!')));
+        if (search != null) {
+            var matches = new BooleanBuilder(genre.name.lower().like(search, '!'));
+            // ASCII 코드에는 ASCII 검색어만 비교해 한글 장르 검색의 문자셋 충돌을 피한다.
+            if (searchText.strip().chars().allMatch(value -> value <= 0x7f)) matches.or(genre.code.lower().like(search, '!'));
+            where.and(matches);
+        }
         var cursor = CatalogCursor.parse(after);
         if (cursor != null) where.and(genre.sortOrder.gt(cursor.getOrder()).or(genre.sortOrder.eq(cursor.getOrder()).and(genre.id.gt(cursor.getId()))));
         return query.selectFrom(genre).where(where).orderBy(genre.sortOrder.asc(), genre.id.asc()).limit(Math.clamp(limit, 1, 100) + 1L).fetch();

@@ -134,13 +134,18 @@ public class BrowserProofService {
             Instant now = Instant.now();
             var issuedAt = claims.getIssueTime();
             String id = claims.getJWTID();
+            // 관리자 목록의 검색·커서와 화면의 세션을 함께 결합한다. 기존 API의 서명 계약은 유지한다.
+            boolean adminRequest = request.getRequestURI().startsWith("/api/admin/");
+            String target = origin + request.getRequestURI()
+                    + (adminRequest && request.getQueryString() != null ? "?" + request.getQueryString() : "");
             if (!same(thumbprint, nonce.getClaimAsString("jkt")) || nonce.getExpiresAt() == null || nonce.getIssuedAt() == null
                     || nonce.getExpiresAt().isAfter(now.plusSeconds(65)) || scope == null
                     || !(scope.equals("login") || UUID.fromString(scope).toString().equals(scope))
                     || expectedScope != null && !scope.equals(expectedScope)
                     || expectedKey != null && !same(thumbprint, expectedKey)
                     || !request.getMethod().equals(claims.getStringClaim("htm"))
-                    || !(origin + request.getRequestURI()).equals(claims.getStringClaim("htu"))
+                    || !target.equals(claims.getStringClaim("htu"))
+                    || adminRequest && (expectedScope == null || !expectedScope.equals(claims.getStringClaim("sid")))
                     || bodyHash == null || !bodyHash.matches("[A-Za-z0-9_-]{43}") || !same(bodyHash, claims.getStringClaim("bht"))
                     || issuedAt == null || issuedAt.toInstant().isAfter(now.plusSeconds(5))
                     || issuedAt.toInstant().isBefore(nonce.getIssuedAt().minusSeconds(5))

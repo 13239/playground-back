@@ -32,4 +32,9 @@ public interface RoleRepository extends JpaRepository<Role, String> {
             + "and (:search is null or lower(r.code) like :search escape '!' "
             + "or lower(r.name) like :search escape '!') order by r.code")
     Slice<Role> search(@Param("search") String search, @Param("cursor") String cursor, Pageable pageable);
+
+    // ASCII 코드 컬럼에 한글 LIKE를 전달하지 않아 이름 검색의 MySQL 문자셋 충돌을 피한다.
+    @Query("select r from Role r where (:cursor is null or r.code > :cursor) "
+            + "and lower(r.name) like :search escape '!' order by r.code")
+    Slice<Role> searchName(@Param("search") String search, @Param("cursor") String cursor, Pageable pageable);
 }

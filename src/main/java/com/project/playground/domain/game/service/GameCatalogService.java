@@ -37,6 +37,8 @@ public class GameCatalogService {
         return response(game, modes.findByGameIdInOrderBySortOrderAscIdAsc(List.of(game.getId())), publicOnly);
     }
     public GameGenrePageResponse genres(String query, String cursor, int limit, boolean publicOnly) {
+        // HTTP 외의 내부 호출도 페이지 범위를 지켜 잘못된 커서 인덱스나 무제한 조회를 만들지 않는다.
+        limit = Math.clamp(limit, 1, 100);
         var found = queries.genres(query, cursor, limit, publicOnly);
         var items = found.stream().limit(limit).map(GameGenreResponse::from).toList();
         var last = found.size() > limit ? found.get(limit - 1) : null;

@@ -39,7 +39,10 @@ public class RoleManagementService {
         // SQL LIKE 와일드카드를 일반 검색 문자로 취급하며 요청자가 전체 페이지 크기를 늘리지 못하게 한다.
         String search = query == null || query.isBlank() ? null : "%" + query.strip().toLowerCase(Locale.ROOT)
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        var page = roles.search(search, cursor, PageRequest.of(0, Math.clamp(limit, 1, 100)));
+        // 한글 검색어는 UTF-8 이름에만 비교한다. 코드 커서는 두 조회에서 동일하게 유지한다.
+        var pageable = PageRequest.of(0, Math.clamp(limit, 1, 100));
+        var page = search == null || query.strip().chars().allMatch(value -> value <= 0x7f)
+                ? roles.search(search, cursor, pageable) : roles.searchName(search, cursor, pageable);
         var items = page.getContent().stream().map(RoleSummaryResponse::from).toList();
         return RoleListResponse.builder().items(items)
                 .nextCursor(page.hasNext() ? items.getLast().getCode() : null).build();
