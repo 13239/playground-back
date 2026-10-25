@@ -61,6 +61,12 @@ public enum ErrorCode {
     GAME_CATALOG_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "게임 목록을 일시적으로 확인할 수 없습니다."),
     GAME_UNAVAILABLE(HttpStatus.CONFLICT, "현재 이 게임을 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
+    // 테트리스 기록 검증·이전 판 제출·저장소 장애는 로그인 실패와 구분한다.
+    TETRIS_RUN_CHANGED(HttpStatus.CONFLICT, "이전 게임의 기록입니다. 현재 화면에서 새 게임을 시작해 주세요."),
+    TETRIS_REPLAY_INVALID(HttpStatus.BAD_REQUEST, "플레이 기록을 검증하지 못했습니다."),
+    TETRIS_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "테트리스 요청이 많습니다. 잠시 후 다시 시도해 주세요."),
+    TETRIS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "테트리스를 일시적으로 이용할 수 없습니다."),
+
     // 오목 방은 계정당 하나만 열고 소유자만 빈 대기방을 닫을 수 있다.
     ROOM_ALREADY_HOSTING(HttpStatus.CONFLICT, "이미 만든 방이 있습니다. 목록에서 내 방을 확인해 주세요."),
     ROOM_REQUEST_EXPIRED(HttpStatus.CONFLICT, "이미 닫힌 방의 요청입니다. 새로 방을 만들어 주세요."),
