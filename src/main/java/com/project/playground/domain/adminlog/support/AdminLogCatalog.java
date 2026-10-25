@@ -16,7 +16,10 @@ public final class AdminLogCatalog {
             "ACCESS_POLICY_UPDATED", "접속 제한 변경", "ACCESS_EXEMPTIONS_UPDATED", "접속 허용 권한 변경",
             "GAME_CREATED", "게임 추가", "GAME_UPDATED", "게임 정보 변경", "GAME_AVAILABILITY_UPDATED", "게임 공개 상태 변경",
             "GAME_MODE_CREATED", "게임 모드 추가", "GAME_MODE_UPDATED", "게임 모드 수정", "GAME_MODE_AVAILABILITY_UPDATED", "게임 모드 공개 상태 변경",
-            "GAME_GENRE_CREATED", "장르 추가", "GAME_GENRE_UPDATED", "장르 수정", "SUPER_ADMIN_INITIALIZED", "슈퍼 관리자 초기 지정");
+            "GAME_GENRE_CREATED", "장르 추가", "GAME_GENRE_UPDATED", "장르 수정",
+            // 그리드 순서 저장은 일반 정보 변경과 구분해 조회·필터링한다.
+            "GAME_ORDER_UPDATED", "게임 노출 순서 변경", "GAME_GENRE_ORDER_UPDATED", "장르 노출 순서 변경",
+            "SUPER_ADMIN_INITIALIZED", "슈퍼 관리자 초기 지정");
     private static final Map<String, String> TARGETS = ordered("USER", "회원", "ROLE", "권한", "ACCESS_POLICY", "운영 설정",
             "GAME", "게임", "GAME_MODE", "게임 모드", "GAME_GENRE", "장르");
     public static String action(String code) { return ACTIONS.getOrDefault(code, code); }

@@ -1,10 +1,12 @@
 package com.project.playground.domain.game.controller;
 
 import com.project.playground.domain.authorization.enums.PermissionCode;
-import com.project.playground.domain.game.dto.internal.CatalogQuery;
 import com.project.playground.domain.game.dto.request.*;
 import com.project.playground.domain.game.dto.response.*;
 import com.project.playground.domain.game.service.GameManagementService;
+import com.project.playground.domain.game.service.CatalogOrderingService;
+import com.project.playground.domain.game.service.AdminCatalogQueryService;
+import com.project.playground.domain.game.enums.CatalogOrderType;
 import com.project.playground.global.security.admin.RequireAdminPermission;
 import com.project.playground.global.security.session.Session;
 import jakarta.validation.Valid;
@@ -20,12 +22,42 @@ import java.util.List;
 @RestController @RequestMapping("/api/admin") @RequiredArgsConstructor
 public class AdminGameController {
     private final GameManagementService games;
+    private final CatalogOrderingService ordering;
+    private final AdminCatalogQueryService queries;
+
+    /** 순서 편집은 검색 조건 없이 전체 목록 기준의 번호 페이지와 버전을 조회한다. */
+    @GetMapping("/games/order") @RequireAdminPermission(PermissionCode.GAME_READ)
+    public ResponseEntity<CatalogOrderPageResponse> gameOrder(@AuthenticationPrincipal Session session,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(10) @Max(50) int size) {
+        return response(ordering.page(session.getId(), CatalogOrderType.GAME, page, size));
+    }
+
+    @PutMapping("/games/order") @RequireAdminPermission(PermissionCode.GAME_WRITE)
+    public ResponseEntity<CatalogOrderResponse> reorderGames(@AuthenticationPrincipal Session session,
+            @Valid @RequestBody CatalogOrderRequest request) {
+        return response(ordering.reorder(session.getId(), CatalogOrderType.GAME, request));
+    }
+
+    @GetMapping("/game-genres/order") @RequireAdminPermission(PermissionCode.GAME_READ)
+    public ResponseEntity<CatalogOrderPageResponse> genreOrder(@AuthenticationPrincipal Session session,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(10) @Max(50) int size) {
+        return response(ordering.page(session.getId(), CatalogOrderType.GENRE, page, size));
+    }
+
+    @PutMapping("/game-genres/order") @RequireAdminPermission(PermissionCode.GAME_WRITE)
+    public ResponseEntity<CatalogOrderResponse> reorderGenres(@AuthenticationPrincipal Session session,
+            @Valid @RequestBody CatalogOrderRequest request) {
+        return response(ordering.reorder(session.getId(), CatalogOrderType.GENRE, request));
+    }
 
     @GetMapping("/games") @RequireAdminPermission(PermissionCode.GAME_READ)
-    public ResponseEntity<GamePageResponse> list(@AuthenticationPrincipal Session session,
-            @RequestParam(required = false) @Size(max = 100) String query, @RequestParam(required = false) @Size(max = 27) String cursor,
-            @RequestParam(defaultValue = "40") @Min(1) @Max(100) int limit) {
-        return response(games.list(session.getId(), CatalogQuery.builder().query(query).cursor(cursor).limit(limit).build()));
+    public ResponseEntity<AdminCatalogPageResponse<AdminGameSummaryResponse>> list(@AuthenticationPrincipal Session session,
+            @RequestParam(required = false) @Size(max = 100) String query,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "10") @Min(10) @Max(50) int size) {
+        return response(queries.games(session.getId(), query, page, size));
     }
     @GetMapping("/game-implementations") @RequireAdminPermission(PermissionCode.GAME_READ)
     public ResponseEntity<List<GameImplementationResponse>> implementations(@AuthenticationPrincipal Session session) {
@@ -70,10 +102,23 @@ public class AdminGameController {
         return response(games.modeAvailability(session.getId(), code, mode, request));
     }
     @GetMapping("/game-genres") @RequireAdminPermission(PermissionCode.GAME_READ)
-    public ResponseEntity<GameGenrePageResponse> genres(@AuthenticationPrincipal Session session,
+    public ResponseEntity<AdminCatalogPageResponse<AdminGenreResponse>> genres(@AuthenticationPrincipal Session session,
+            @RequestParam(required = false) @Size(max = 100) String query,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "10") @Min(10) @Max(50) int size) {
+        return response(queries.genres(session.getId(), query, page, size));
+    }
+    /** 장르 선택기의 검색·커서는 관리 그리드의 번호 페이지 계약과 분리한다. */
+    @GetMapping("/game-genres/options") @RequireAdminPermission(PermissionCode.GAME_READ)
+    public ResponseEntity<GenreOptionPageResponse> genreOptions(@AuthenticationPrincipal Session session,
             @RequestParam(required = false) @Size(max = 100) String query, @RequestParam(required = false) @Size(max = 27) String cursor,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit) {
-        return response(games.genres(session.getId(), query, cursor, limit));
+        return response(queries.genreOptions(session.getId(), query, cursor, limit));
+    }
+    @GetMapping("/game-genres/{code}") @RequireAdminPermission(PermissionCode.GAME_READ)
+    public ResponseEntity<AdminGenreResponse> genre(@AuthenticationPrincipal Session session,
+            @PathVariable @Pattern(regexp = "[A-Z][A-Z0-9_]{0,63}") String code) {
+        return response(queries.genre(session.getId(), code));
     }
     @PostMapping("/game-genres/{code}") @RequireAdminPermission(PermissionCode.GAME_WRITE)
     public ResponseEntity<GameGenreResponse> createGenre(@AuthenticationPrincipal Session session,

@@ -95,7 +95,8 @@ public class AdminLogDetailMapper {
         String[] entries = { "code", "코드", "name", "이름", "description", "설명", "summary", "요약", "permissions", "기능 권한",
                 "enabled", "사용 여부", "message", "안내 문구", "exemptRoleCodes", "접속 허용 권한", "published", "목록 공개",
                 "availability", "이용 상태", "thumbnailKey", "썸네일", "genres", "장르", "minHumanPlayers", "최소 참가 인원",
-                "maxHumanPlayers", "최대 참가 인원", "sortOrder", "노출 순서" };
+                // 기존 개별 순서 변경 이력은 보존하고 새로운 일괄 순서 저장도 명시적으로 표시한다.
+                "maxHumanPlayers", "최대 참가 인원", "sortOrder", "노출 순서", "order", "행 순서" };
         var result = new LinkedHashMap<String, String>();
         for (int index = 0; index < entries.length; index += 2) result.put(entries[index], entries[index + 1]);
         return Collections.unmodifiableMap(result);

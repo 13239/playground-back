@@ -11,5 +11,5 @@ import lombok.extern.jackson.Jacksonized;
 public class UpdateGameRequest {
     @NotNull @Valid private final GameMetadataRequest metadata;
     @NotNull @PositiveOrZero private final Long expectedVersion;
-    @Size(max = 300) private final String reason;
+    // 변경 사유 입력 없이 변경 전후 값을 자동 감사 기록으로 남긴다.
 }

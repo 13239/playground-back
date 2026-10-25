@@ -36,6 +36,17 @@ public class GameModuleRegistry {
                 .orElseThrow(() -> new BusinessException(ErrorCode.GAME_IMPLEMENTATION_UNAVAILABLE));
     }
     public List<GameModule> all() { return modules.values().stream().sorted(Comparator.comparing(GameModule::code)).toList(); }
+    /** 지원 모드를 구현 정의 순서로 배치하고 미지원 모드도 관리자 조회에서는 마지막에 보존한다. */
+    public List<GameMode> orderedModes(String gameCode, List<GameMode> modes) {
+        var order = new HashMap<String, Integer>();
+        var module = modules.get(gameCode);
+        if (module != null) {
+            var definitions = module.modes();
+            for (int index = 0; index < definitions.size(); index++) order.put(definitions.get(index).getCode(), index);
+        }
+        return modes.stream().sorted(Comparator.comparingInt((GameMode mode) -> order.getOrDefault(mode.getCode(), Integer.MAX_VALUE))
+                .thenComparing(GameMode::getCode)).toList();
+    }
     public boolean supports(String gameCode, GameMode mode) {
         var module = modules.get(gameCode);
         return module != null && module.modes().stream().anyMatch(definition -> definition.getCode().equals(mode.getCode())

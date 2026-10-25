@@ -53,6 +53,7 @@ public enum ErrorCode {
     CATALOG_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "이용할 수 있는 게임을 찾을 수 없습니다."),
     CATALOG_MODE_NOT_FOUND(HttpStatus.NOT_FOUND, "이용할 수 있는 게임 모드를 찾을 수 없습니다."),
     CATALOG_GENRE_NOT_FOUND(HttpStatus.NOT_FOUND, "등록된 게임 장르를 찾을 수 없습니다."),
+    CATALOG_GENRE_DISABLED(HttpStatus.CONFLICT, "사용 중지된 장르는 새로 연결할 수 없습니다. 장르 선택을 확인해 주세요."),
     GAME_IMPLEMENTATION_UNAVAILABLE(HttpStatus.CONFLICT, "현재 지원하지 않는 게임 구현 또는 모드입니다."),
     GAME_CONFIGURATION_INVALID(HttpStatus.BAD_REQUEST, "게임 구현이 지원하는 설정 범위를 확인해 주세요."),
     GAME_CATALOG_CHANGED(HttpStatus.CONFLICT, "게임 설정이 변경되었습니다. 다시 조회해 주세요."),

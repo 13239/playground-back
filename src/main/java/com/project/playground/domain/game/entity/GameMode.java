@@ -29,18 +29,18 @@ public class GameMode {
     @Column(nullable = false) private boolean published;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16, columnDefinition = "varchar(16)") private GameAvailability availability = GameAvailability.DISABLED;
     @Column(name = "unavailable_message", nullable = false, length = 300) private String unavailableMessage = "";
-    @Column(name = "sort_order", nullable = false) private int sortOrder;
     @Version private Long version;
     @CreatedDate @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     @LastModifiedDate @Column(name = "updated_at") private Instant updatedAt;
 
     @Builder
-    public GameMode(Long gameId, GameModeDefinition definition, String name, int minHumanPlayers, int maxHumanPlayers, int sortOrder) {
+    public GameMode(Long gameId, GameModeDefinition definition, String name, int minHumanPlayers, int maxHumanPlayers) {
         this.gameId = gameId; this.code = definition.getCode();
-        update(definition, name, minHumanPlayers, maxHumanPlayers, sortOrder);
+        update(definition, name, minHumanPlayers, maxHumanPlayers);
     }
-    public void update(GameModeDefinition definition, String name, int minHumanPlayers, int maxHumanPlayers, int sortOrder) {
-        this.name = name.strip(); this.minHumanPlayers = minHumanPlayers; this.maxHumanPlayers = maxHumanPlayers; this.sortOrder = sortOrder;
+    /** 모드 순서는 배포된 구현 정의를 따르며 일반 수정으로 임의 순서를 저장하지 않는다. */
+    public void update(GameModeDefinition definition, String name, int minHumanPlayers, int maxHumanPlayers) {
+        this.name = name.strip(); this.minHumanPlayers = minHumanPlayers; this.maxHumanPlayers = maxHumanPlayers;
         this.graphicsType = definition.getGraphicsType(); this.connectionType = definition.getConnectionType();
         this.interactionType = definition.getInteractionType(); this.definitionVersion = definition.getVersion();
     }

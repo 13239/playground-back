@@ -5,12 +5,10 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
 
-/** 장르 코드는 경로로 고정하며 일반 수정에서는 이름·노출 순서·사용 여부만 바꾼다. */
+/** 장르 코드는 경로로 고정한다. 일반 수정은 이름·사용 여부만 받고 노출 순서는 그리드 API로 분리하며 변경 사유는 받지 않는다. */
 @Getter @Builder @Jacksonized
 public class GameGenreRequest {
     @NotBlank @Size(max = 50) private final String name;
     @NotNull private final Boolean enabled;
-    @NotNull @Min(0) @Max(1000000) private final Integer sortOrder;
     @NotNull @PositiveOrZero private final Long expectedVersion;
-    @Size(max = 300) private final String reason;
 }

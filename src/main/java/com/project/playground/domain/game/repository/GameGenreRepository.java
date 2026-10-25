@@ -7,6 +7,7 @@ import java.util.*;
 
 /** 새 장르도 코드 데이터로 조회하며 비활성화해도 기존 게임 매핑은 삭제하지 않는다. */
 public interface GameGenreRepository extends JpaRepository<GameGenre, Long> {
+    Optional<GameGenre> findByCode(String code);
     List<GameGenre> findByCodeIn(Collection<String> codes);
     boolean existsByCode(String code);
     @Lock(LockModeType.PESSIMISTIC_WRITE)

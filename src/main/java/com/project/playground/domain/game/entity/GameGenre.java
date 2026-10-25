@@ -26,9 +26,11 @@ public class GameGenre {
     @Builder
     public GameGenre(String code, String name, boolean enabled, int sortOrder) {
         this.code = code;
-        update(name, enabled, sortOrder);
+        this.sortOrder = sortOrder;
+        update(name, enabled);
     }
-    public void update(String name, boolean enabled, int sortOrder) {
-        this.name = name.strip(); this.enabled = enabled; this.sortOrder = sortOrder;
+    /** 장르의 정보 편집과 그리드 순서 저장을 분리해 이전 상세 화면이 새 순서를 덮어쓰지 않게 한다. */
+    public void update(String name, boolean enabled) {
+        this.name = name.strip(); this.enabled = enabled;
     }
 }

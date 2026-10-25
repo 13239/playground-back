@@ -5,10 +5,10 @@ import com.project.playground.domain.authorization.dto.response.AdminContextResp
 import com.project.playground.domain.authorization.enums.PermissionCode;
 import com.project.playground.domain.authorization.repository.RoleRepository;
 import com.project.playground.domain.authorization.service.AdminAuthorizationService;
-import com.project.playground.domain.game.dto.internal.CatalogQuery;
 import com.project.playground.domain.game.dto.request.*;
 import com.project.playground.domain.game.dto.response.*;
 import com.project.playground.domain.game.entity.*;
+import com.project.playground.domain.game.enums.CatalogOrderType;
 import com.project.playground.domain.game.module.*;
 import com.project.playground.domain.game.repository.*;
 import com.project.playground.global.exception.*;
@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /** 관리 명령은 현재 권한·편집 버전·구현 지원 범위·동기 감사 기록을 같은 트랜잭션으로 처리한다. */
 @Service @RequiredArgsConstructor @Transactional(readOnly = true)
@@ -28,41 +29,40 @@ public class GameManagementService {
     private final GameModuleRegistry modules;
     private final GameCatalogService catalog;
     private final AdminAuditService audit;
+    private final CatalogOrderingService ordering;
 
-    public GamePageResponse list(Long actor, CatalogQuery query) {
-        authorization.require(actor, PermissionCode.GAME_READ); return catalog.list(query, false);
-    }
     public GameResponse get(Long actor, String code) {
         authorization.require(actor, PermissionCode.GAME_READ); return catalog.get(code, false);
     }
-    public GameGenrePageResponse genres(Long actor, String query, String cursor, int limit) {
-        authorization.require(actor, PermissionCode.GAME_READ); return catalog.genres(query, cursor, limit, false);
-    }
     public List<GameImplementationResponse> implementations(Long actor) {
         authorization.require(actor, PermissionCode.GAME_READ);
-        return modules.all().stream().map(GameImplementationResponse::from).toList();
+        var implementations = modules.all();
+        var registered = implementations.isEmpty() ? Set.<String>of() : games.findRegisteredCodes(implementations.stream().map(GameModule::code).toList());
+        return implementations.stream().map(module -> GameImplementationResponse.from(module, registered.contains(module.code()))).toList();
     }
     @Transactional
     public GameResponse create(Long actorId, CreateGameRequest request) {
         var actor = requireWrite(actorId, PermissionCode.GAME_WRITE);
-        var module = modules.require(request.getCode());
+        modules.require(request.getCode());
         if (games.existsByCode(request.getCode())) throw new BusinessException(ErrorCode.GAME_CATALOG_CONFLICT);
         var metadata = request.getMetadata();
-        var assigned = validateMetadata(module, metadata);
+        var assigned = validateMetadata(metadata, Set.of());
         var game = games.saveAndFlush(Game.builder().code(request.getCode()).name(metadata.getName()).summary(metadata.getSummary())
-                .description(metadata.getDescription()).thumbnailKey(metadata.getThumbnailKey()).sortOrder(metadata.getSortOrder()).genres(assigned).build());
-        audit.write(actor, "GAME_CREATED", "GAME", game.getCode(), request.getReason(), Map.of("after", snapshot(game)));
+                // 신규 게임은 전체 목록 끝에 배치하고 순서 편집 버전도 같은 트랜잭션에서 갱신한다.
+                .description(metadata.getDescription()).sortOrder(ordering.reserveLast(CatalogOrderType.GAME)).genres(assigned).build());
+        audit.write(actor, "GAME_CREATED", "GAME", game.getCode(), null, Map.of("after", snapshot(game)));
         return catalog.get(game.getCode(), false);
     }
     @Transactional
     public GameResponse update(Long actorId, String code, UpdateGameRequest request) {
         var actor = requireWrite(actorId, PermissionCode.GAME_WRITE);
         var game = locked(code); requireVersion(game.getVersion(), request.getExpectedVersion());
-        var metadata = request.getMetadata(); var assigned = validateMetadata(modules.require(code), metadata);
+        modules.require(code);
+        var metadata = request.getMetadata(); var assigned = validateMetadata(metadata, game.getGenres());
         var before = snapshot(game);
-        game.update(metadata.getName(), metadata.getSummary(), metadata.getDescription(), metadata.getThumbnailKey(), metadata.getSortOrder(), assigned);
+        game.update(metadata.getName(), metadata.getSummary(), metadata.getDescription(), assigned);
         games.flush();
-        audit.write(actor, "GAME_UPDATED", "GAME", code, request.getReason(), Map.of("before", before, "after", snapshot(game)));
+        audit.write(actor, "GAME_UPDATED", "GAME", code, null, Map.of("before", before, "after", snapshot(game)));
         return catalog.get(code, false);
     }
     @Transactional
@@ -72,7 +72,7 @@ public class GameManagementService {
         modules.require(code);
         var before = snapshot(game);
         game.changeAvailability(request.getPublished(), request.getAvailability(), request.getMessage()); games.flush();
-        audit.write(actor, "GAME_AVAILABILITY_UPDATED", "GAME", code, request.getReason(), Map.of("before", before, "after", snapshot(game)));
+        audit.write(actor, "GAME_AVAILABILITY_UPDATED", "GAME", code, null, Map.of("before", before, "after", snapshot(game)));
         return catalog.get(code, false);
     }
     @Transactional
@@ -83,14 +83,14 @@ public class GameManagementService {
         var existing = modes.findByGameIdAndCode(game.getId(), modeCode);
         if (create && existing.isPresent()) throw new BusinessException(ErrorCode.GAME_CATALOG_CONFLICT);
         var mode = create ? GameMode.builder().gameId(game.getId()).definition(definition).name(request.getName())
-                .minHumanPlayers(request.getMinHumanPlayers()).maxHumanPlayers(request.getMaxHumanPlayers()).sortOrder(request.getSortOrder()).build()
+                .minHumanPlayers(request.getMinHumanPlayers()).maxHumanPlayers(request.getMaxHumanPlayers()).build()
                 : existing.orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_MODE_NOT_FOUND));
         if (create) requireVersion(0, request.getExpectedVersion()); else requireVersion(mode.getVersion(), request.getExpectedVersion());
         var before = create ? Map.<String, Object>of() : snapshot(mode);
-        if (!create) mode.update(definition, request.getName(), request.getMinHumanPlayers(), request.getMaxHumanPlayers(), request.getSortOrder());
+        if (!create) mode.update(definition, request.getName(), request.getMinHumanPlayers(), request.getMaxHumanPlayers());
         modes.saveAndFlush(mode);
         audit.write(actor, create ? "GAME_MODE_CREATED" : "GAME_MODE_UPDATED", "GAME_MODE", gameCode + ":" + modeCode,
-                request.getReason(), Map.of("before", before, "after", snapshot(mode)));
+                null, Map.of("before", before, "after", snapshot(mode)));
         return GameModeResponse.from(mode, modules.supports(gameCode, mode));
     }
     @Transactional
@@ -102,7 +102,7 @@ public class GameManagementService {
         if (!modules.supports(gameCode, mode)) throw new BusinessException(ErrorCode.GAME_IMPLEMENTATION_UNAVAILABLE);
         var before = snapshot(mode);
         mode.changeAvailability(request.getPublished(), request.getAvailability(), request.getMessage()); modes.flush();
-        audit.write(actor, "GAME_MODE_AVAILABILITY_UPDATED", "GAME_MODE", gameCode + ":" + modeCode, request.getReason(),
+        audit.write(actor, "GAME_MODE_AVAILABILITY_UPDATED", "GAME_MODE", gameCode + ":" + modeCode, null,
                 Map.of("before", before, "after", snapshot(mode)));
         return GameModeResponse.from(mode, true);
     }
@@ -111,13 +111,14 @@ public class GameManagementService {
         var actor = requireWrite(actorId, PermissionCode.GAME_WRITE);
         var existing = genres.findForUpdate(code);
         if (create && existing.isPresent()) throw new BusinessException(ErrorCode.GAME_CATALOG_CONFLICT);
-        var genre = create ? GameGenre.builder().code(code).name(request.getName()).sortOrder(request.getSortOrder()).enabled(request.getEnabled()).build()
+        // 생성 시에만 끝 순번을 할당하고 기존 장르의 일반 저장에서는 그리드 순서를 유지한다.
+        var genre = create ? GameGenre.builder().code(code).name(request.getName()).sortOrder(ordering.reserveLast(CatalogOrderType.GENRE)).enabled(request.getEnabled()).build()
                 : existing.orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_GENRE_NOT_FOUND));
         if (create) requireVersion(0, request.getExpectedVersion()); else requireVersion(genre.getVersion(), request.getExpectedVersion());
         var before = create ? Map.<String, Object>of() : snapshot(genre);
-        if (!create) genre.update(request.getName(), request.getEnabled(), request.getSortOrder());
+        if (!create) genre.update(request.getName(), request.getEnabled());
         genres.saveAndFlush(genre);
-        audit.write(actor, create ? "GAME_GENRE_CREATED" : "GAME_GENRE_UPDATED", "GAME_GENRE", code, request.getReason(),
+        audit.write(actor, create ? "GAME_GENRE_CREATED" : "GAME_GENRE_UPDATED", "GAME_GENRE", code, null,
                 Map.of("before", before, "after", snapshot(genre)));
         return GameGenreResponse.from(genre);
     }
@@ -127,10 +128,14 @@ public class GameManagementService {
         return authorization.require(actor, permission);
     }
     private Game locked(String code) { return games.findForUpdate(code).orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_GAME_NOT_FOUND)); }
-    private Set<GameGenre> validateMetadata(GameModule module, GameMetadataRequest metadata) {
-        if (!module.thumbnailKeys().contains(metadata.getThumbnailKey())) throw new BusinessException(ErrorCode.GAME_CONFIGURATION_INVALID);
+    private Set<GameGenre> validateMetadata(GameMetadataRequest metadata, Set<GameGenre> previous) {
         var assigned = genres.findByCodeIn(metadata.getGenreCodes());
         if (assigned.size() != metadata.getGenreCodes().size()) throw new BusinessException(ErrorCode.CATALOG_GENRE_NOT_FOUND);
+        // 사용 중지한 장르의 기존 연결은 유지·제거할 수 있지만 다른 게임에 새로 연결하지는 못한다.
+        var previousCodes = previous.stream().map(GameGenre::getCode).collect(Collectors.toSet());
+        if (assigned.stream().anyMatch(genre -> !genre.isEnabled() && !previousCodes.contains(genre.getCode()))) {
+            throw new BusinessException(ErrorCode.CATALOG_GENRE_DISABLED);
+        }
         return new HashSet<>(assigned);
     }
     private static void requireVersion(long actual, long expected) {
@@ -139,14 +144,14 @@ public class GameManagementService {
     private static Map<String, Object> snapshot(Game game) {
         var values = new LinkedHashMap<String, Object>();
         values.put("code", game.getCode()); values.put("name", game.getName()); values.put("summary", game.getSummary());
-        values.put("description", game.getDescription()); values.put("thumbnailKey", game.getThumbnailKey());
+        values.put("description", game.getDescription());
         values.put("genres", game.getGenres().stream().map(GameGenre::getCode).sorted().toList()); values.put("sortOrder", game.getSortOrder());
         values.put("published", game.isPublished()); values.put("availability", game.getAvailability().name());
         values.put("message", game.getUnavailableMessage()); values.put("version", game.getVersion()); return values;
     }
     private static Map<String, Object> snapshot(GameMode mode) {
         return Map.of("code", mode.getCode(), "name", mode.getName(), "minHumanPlayers", mode.getMinHumanPlayers(),
-                "maxHumanPlayers", mode.getMaxHumanPlayers(), "definitionVersion", mode.getDefinitionVersion(), "sortOrder", mode.getSortOrder(),
+                "maxHumanPlayers", mode.getMaxHumanPlayers(), "definitionVersion", mode.getDefinitionVersion(),
                 "published", mode.isPublished(), "availability", mode.getAvailability().name(), "message", mode.getUnavailableMessage(), "version", mode.getVersion());
     }
     private static Map<String, Object> snapshot(GameGenre genre) {

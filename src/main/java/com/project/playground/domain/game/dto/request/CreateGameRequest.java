@@ -11,5 +11,5 @@ import lombok.extern.jackson.Jacksonized;
 public class CreateGameRequest {
     @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_]{0,63}") private final String code;
     @NotNull @Valid private final GameMetadataRequest metadata;
-    @Size(max = 300) private final String reason;
+    // 작업자와 변경 값은 서버에서 자동 기록하며 별도의 변경 사유는 받지 않는다.
 }

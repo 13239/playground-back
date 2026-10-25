@@ -25,16 +25,20 @@ public class GameCatalogService {
         int limit = Math.clamp(query.getLimit(), 1, 100);
         boolean hasMore = found.size() > limit;
         var page = found.stream().limit(limit).toList();
-        var grouped = page.isEmpty() ? Map.<Long, List<GameMode>>of() : modes.findByGameIdInOrderBySortOrderAscIdAsc(page.stream().map(Game::getId).toList())
-                .stream().collect(Collectors.groupingBy(GameMode::getGameId));
-        return GamePageResponse.builder().items(page.stream().map(game -> response(game, grouped.getOrDefault(game.getId(), List.of()), publicOnly)).toList())
+        return GamePageResponse.builder().items(responses(page, publicOnly))
                 .nextCursor(hasMore ? CatalogCursor.encode(page.getLast().getSortOrder(), page.getLast().getId()) : null).build();
+    }
+    /** 공개 커서와 관리자 번호 페이지 모두 현재 페이지의 모드를 일괄 조회한다. */
+    public List<GameResponse> responses(List<Game> page, boolean publicOnly) {
+        var grouped = page.isEmpty() ? Map.<Long, List<GameMode>>of() : modes.findByGameIdInOrderByIdAsc(page.stream().map(Game::getId).toList())
+                .stream().collect(Collectors.groupingBy(GameMode::getGameId));
+        return page.stream().map(game -> response(game, grouped.getOrDefault(game.getId(), List.of()), publicOnly)).toList();
     }
     public GameResponse get(String code, boolean publicOnly) {
         var game = games.findByCode(code).filter(value -> !publicOnly || value.isPublished())
                 .orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_GAME_NOT_FOUND));
         if (publicOnly) modules.require(code);
-        return response(game, modes.findByGameIdInOrderBySortOrderAscIdAsc(List.of(game.getId())), publicOnly);
+        return response(game, modes.findByGameIdInOrderByIdAsc(List.of(game.getId())), publicOnly);
     }
     public GameGenrePageResponse genres(String query, String cursor, int limit, boolean publicOnly) {
         // HTTP 외의 내부 호출도 페이지 범위를 지켜 잘못된 커서 인덱스나 무제한 조회를 만들지 않는다.
@@ -47,7 +51,8 @@ public class GameCatalogService {
     private GameResponse response(Game game, List<GameMode> found, boolean publicOnly) {
         var genres = game.getGenres().stream().filter(genre -> !publicOnly || genre.isEnabled())
                 .sorted(Comparator.comparingInt(GameGenre::getSortOrder).thenComparing(GameGenre::getId)).map(GameGenreResponse::from).toList();
-        var modeResponses = found.stream().filter(mode -> !publicOnly || mode.isPublished() && modules.supports(game.getCode(), mode))
+        // 등록 시점이나 과거 수동 정렬값에 관계없이 배포 구현에서 정의한 모드 순서를 유지한다.
+        var modeResponses = modules.orderedModes(game.getCode(), found).stream().filter(mode -> !publicOnly || mode.isPublished() && modules.supports(game.getCode(), mode))
                 .map(mode -> GameModeResponse.from(mode, modules.supports(game.getCode(), mode))).toList();
         return GameResponse.from(game, genres, modeResponses);
     }

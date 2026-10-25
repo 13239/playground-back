@@ -14,7 +14,6 @@ public class GameResponse {
     private final String name;
     private final String summary;
     private final String description;
-    private final String thumbnailKey;
     private final boolean published;
     private final GameAvailability availability;
     private final String unavailableMessage;
@@ -25,7 +24,8 @@ public class GameResponse {
     private final List<GameModeResponse> modes;
     public static GameResponse from(Game game, List<GameGenreResponse> genres, List<GameModeResponse> modes) {
         return builder().code(game.getCode()).name(game.getName()).summary(game.getSummary()).description(game.getDescription())
-                .thumbnailKey(game.getThumbnailKey()).published(game.isPublished()).availability(game.getAvailability())
+                // 표지는 게임 코드에 연결하므로 별도의 관리용 이미지 키를 반환하지 않는다.
+                .published(game.isPublished()).availability(game.getAvailability())
                 .unavailableMessage(game.getUnavailableMessage()).sortOrder(game.getSortOrder()).firstPublishedAt(game.getFirstPublishedAt())
                 .version(game.getVersion()).genres(genres).modes(modes).build();
     }

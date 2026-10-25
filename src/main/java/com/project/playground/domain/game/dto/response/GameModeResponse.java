@@ -20,13 +20,13 @@ public class GameModeResponse {
     private final GameAvailability availability;
     private final String unavailableMessage;
     private final boolean supported;
-    private final int sortOrder;
     private final long version;
     public static GameModeResponse from(GameMode mode, boolean supported) {
         return builder().code(mode.getCode()).name(mode.getName()).graphicsType(mode.getGraphicsType())
                 .connectionType(mode.getConnectionType()).interactionType(mode.getInteractionType())
                 .minHumanPlayers(mode.getMinHumanPlayers()).maxHumanPlayers(mode.getMaxHumanPlayers()).definitionVersion(mode.getDefinitionVersion())
                 .published(mode.isPublished()).availability(mode.getAvailability()).unavailableMessage(mode.getUnavailableMessage())
-                .supported(supported).sortOrder(mode.getSortOrder()).version(mode.getVersion()).build();
+                // 모드 목록은 구현 정의 순서로 조립하므로 수동 노출 순서값을 공개하지 않는다.
+                .supported(supported).version(mode.getVersion()).build();
     }
 }
