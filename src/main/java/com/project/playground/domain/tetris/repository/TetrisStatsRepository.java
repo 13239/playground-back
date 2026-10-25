@@ -13,12 +13,11 @@ public interface TetrisStatsRepository extends JpaRepository<TetrisPlayerStats, 
     // 원자적 SQL 갱신 직후에도 JPA 1차 캐시의 이전 통계가 응답에 섞이지 않도록 스칼라로 읽는다.
     @Query(value = "SELECT best_score AS bestScore, plays FROM tbl_tetris_player_stats WHERE user_id = :id", nativeQuery = true)
     Optional<OwnRow> own(@Param("id") Long id);
+    // 서버가 완료를 확인한 판의 최초 통계 생성·최고 점수·게임 오버 1회를 한 SQL로 갱신한다.
     @Modifying @Query(value = """
-        INSERT INTO tbl_tetris_player_stats (user_id, plays) VALUES (:id, 1)
-        ON DUPLICATE KEY UPDATE plays = plays + 1
+        INSERT INTO tbl_tetris_player_stats (user_id, best_score, plays) VALUES (:id, :score, 1)
+        ON DUPLICATE KEY UPDATE best_score = GREATEST(best_score, :score), plays = plays + 1
         """, nativeQuery = true)
-    void started(@Param("id") Long id);
-    @Modifying @Query(value = "UPDATE tbl_tetris_player_stats SET best_score = GREATEST(best_score, :score) WHERE user_id = :id", nativeQuery = true)
     void completed(@Param("id") Long id, @Param("score") long score);
     @Query(value = """
         SELECT s.user_id AS userId, u.nickname AS nickname, s.best_score AS score

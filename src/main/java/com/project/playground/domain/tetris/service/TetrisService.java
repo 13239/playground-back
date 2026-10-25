@@ -34,13 +34,13 @@ public class TetrisService {
         runs.ensure(session.getId());
         var run = runs.lock(session.getId()).orElseThrow();
         String login = session.getSessionId().toString();
-        // 응답 유실 뒤 같은 시작 ID를 재요청해도 시드와 시작 횟수를 바꾸지 않는다.
+        // 응답 유실 뒤 같은 시작 ID는 시드를 유지한다. 시작 시에는 통계나 플레이 횟수를 갱신하지 않는다.
         if (request.getRequestId().equals(run.getRunId())) {
-            if (run.isFinished() || !login.equals(run.getLoginSessionId())) throw new BusinessException(ErrorCode.TETRIS_RUN_CHANGED);
+            if (run.isFinished() || !login.equals(run.getLoginSessionId()) || run.getRuleVersion() != TetrisReplay.VERSION)
+                throw new BusinessException(ErrorCode.TETRIS_RUN_CHANGED);
         } else {
             long seed = Integer.toUnsignedLong(RANDOM.nextInt());
-            run.begin(request.getRequestId(), login, seed == 0 ? 1 : seed, clock.instant());
-            stats.started(session.getId());
+            run.begin(request.getRequestId(), login, seed == 0 ? 1 : seed, clock.instant(), TetrisReplay.VERSION);
         }
         return TetrisResponse.Start.builder().runId(run.getRunId()).seed(run.getSeed()).ruleVersion(TetrisReplay.VERSION).build();
     }
@@ -52,11 +52,15 @@ public class TetrisService {
             throw new BusinessException(ErrorCode.TETRIS_RUN_CHANGED);
         // 완료 응답 유실 뒤 재전송은 다시 집계·재생하지 않는다.
         if (run.isFinished()) return readOverview(session.getId(), 1);
+        // 이전 규칙으로 시작한 판은 크기가 다른 새 규칙으로 검증하지 않는다.
+        if (run.getRuleVersion() != TetrisReplay.VERSION) throw new BusinessException(ErrorCode.TETRIS_RUN_CHANGED);
         long elapsed = Duration.between(run.getStartedAt(), clock.instant()).toMillis();
         if (elapsed < 0 || elapsed > 7_200_000 || request.getTicks() > elapsed * 60 / 1000 + 180)
             throw new BusinessException(ErrorCode.TETRIS_REPLAY_INVALID);
         try {
             var replay = TetrisReplay.verify(run.getSeed(), request.getTicks(), request.getInputs());
+            // 점수와 횟수 모두 서버가 재생해 게임 오버를 확인한 판만 저장한다. 중도 종료 제출은 거절한다.
+            if (!replay.isOver()) throw new IllegalArgumentException("Replay must end with game over");
             stats.completed(session.getId(), replay.getScore());
         } catch (IllegalArgumentException exception) { throw new BusinessException(ErrorCode.TETRIS_REPLAY_INVALID); }
         run.finish();

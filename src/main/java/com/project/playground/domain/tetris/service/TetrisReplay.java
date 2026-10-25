@@ -2,10 +2,11 @@ package com.project.playground.domain.tetris.service;
 
 import java.util.*;
 
-/** rules.ts v1의 정수 시뮬레이션. 제출 점수를 받지 않고 서버 시드와 tick별 입력을 재생한다. */
+/** rules.ts v3의 15×25칸 정수 시뮬레이션. 제출 점수를 받지 않고 서버 시드와 tick별 입력을 재생한다. */
 public final class TetrisReplay {
-    public static final int VERSION = 1;
-    private static final int WIDTH = 10, HEIGHT = 22;
+    public static final int VERSION = 3;
+    // 보이는 25행에 생성용 숨김 2행을 더하며 브라우저와 같은 중앙 생성 위치를 사용한다.
+    private static final int WIDTH = 15, HEIGHT = 27, SPAWN_X = WIDTH / 2 - 2;
     private static final String[][] SHAPES = {{}, {"0000","1111","0000","0000"}, {"0110","0110","0000","0000"},
             {"010","111","000"}, {"100","111","000"}, {"001","111","000"}, {"011","110","000"}, {"110","011","000"}};
     private static final int[][][] KICKS = {
@@ -63,8 +64,8 @@ public final class TetrisReplay {
         return true;
     }
     private void spawn(Integer next) {
-        // 브라우저와 같은 숨김 행 기준으로 생성 위치를 고정한다.
-        type = next == null ? queue.remove() : next; rotation = 0; x = 3; y = 1;
+        // 브라우저와 같은 숨김 행·판 중앙 기준으로 생성 위치를 고정한다.
+        type = next == null ? queue.remove() : next; rotation = 0; x = SPAWN_X; y = 1;
         fillQueue(); gravity = 0; grounded = 0; resets = 0;
         if (!fits(type, rotation, x, y)) over = true;
     }

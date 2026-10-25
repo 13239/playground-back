@@ -30,10 +30,10 @@ public class User extends TimeEntity {
     @Column(nullable = false, length = 50)
     private String nickname;
 
-    // 기존 회원은 DDL 기본값으로, 신규 회원은 엔티티 기본값으로 고양이 프로필을 사용한다.
+    // 기존 회원은 일회성 마이그레이션으로, 신규 회원은 엔티티·DDL 기본값으로 5번 새싹 요정을 사용한다.
     @Enumerated(EnumType.STRING)
     @Column(name = "profile_avatar", nullable = false, length = 20, columnDefinition = "varchar(20)")
-    private ProfileAvatar profileAvatar = ProfileAvatar.CAT;
+    private ProfileAvatar profileAvatar = ProfileAvatar.DEFAULT;
 
     @Column(nullable = false, length = 50)
     private String username;

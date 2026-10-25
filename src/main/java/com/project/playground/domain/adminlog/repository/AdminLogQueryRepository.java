@@ -151,7 +151,8 @@ public class AdminLogQueryRepository {
     }
     private static String targetKey(AuditLogSummary entry) { return entry.getTargetType() + ":" + entry.getTargetId(); }
     private static String first(String primary, String fallback) { return primary == null ? fallback : primary; }
-    private static ProfileAvatar avatar(Tuple row) { return row.get(U.profileAvatar) == null ? ProfileAvatar.CAT : row.get(U.profileAvatar); }
+    // 삭제되거나 연결되지 않은 로그 작성자도 현재 카탈로그의 5번 기본 캐릭터로 표시한다.
+    private static ProfileAvatar avatar(Tuple row) { return row.get(U.profileAvatar) == null ? ProfileAvatar.DEFAULT : row.get(U.profileAvatar); }
     private static Expression<?>[] columns(Expression<?>[] base, Expression<?>[] extra) { return Stream.concat(Arrays.stream(base), Arrays.stream(extra)).toArray(Expression<?>[]::new); }
     private static <T> JPAQuery<T> timed(JPAQuery<T> query) { return query.setHint("jakarta.persistence.query.timeout", 3000); }
     private static long count(JPAQuery<Long> query) { Long count = timed(query).fetchOne(); return count == null ? 0 : count; }

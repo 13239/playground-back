@@ -5,7 +5,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 최고 점수와 시작 횟수는 각 판의 시작·검증 완료 트랜잭션 안에서 원자적으로 갱신한다. */
+/** 최고 점수와 실제 게임 오버 횟수는 각 판의 검증 완료 트랜잭션 안에서 원자적으로 갱신한다. */
 @Entity @Table(name = "tbl_tetris_player_stats") @Getter @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TetrisPlayerStats {
     @Id @Column(name = "user_id") private Long userId;
