@@ -27,9 +27,12 @@ public class BrowserProofFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // 비개인화된 게임 카탈로그 GET만 브라우저 개인키 없이 읽는다. 신규 실행은 이 예외에 포함하지 않는다.
+        // 비개인화된 게임·장르·필터 카탈로그 GET만 브라우저 개인키 없이 읽는다.
+        // 관리용 /api/admin/game-filters와 게임 실행 요청은 증명 예외에 포함하지 않는다.
         if (request.getMethod().equals("GET") && (request.getRequestURI().equals("/api/games")
-                || request.getRequestURI().matches("/api/games/[A-Z][A-Z0-9_]{0,63}") || request.getRequestURI().equals("/api/game-genres"))) return true;
+                || request.getRequestURI().matches("/api/games/[A-Z][A-Z0-9_]{0,63}")
+                || request.getRequestURI().equals("/api/game-genres")
+                || request.getRequestURI().equals("/api/game-filters"))) return true;
         return request.getMethod().equals("POST") && (request.getRequestURI().equals("/api/auth/proof-challenge")
                 || request.getRequestURI().equals("/api/user/sign-up"));
     }
