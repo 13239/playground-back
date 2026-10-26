@@ -56,6 +56,11 @@ public enum ErrorCode {
     CATALOG_GENRE_DISABLED(HttpStatus.CONFLICT, "사용 중지된 장르는 새로 연결할 수 없습니다. 장르 선택을 확인해 주세요."),
     GAME_IMPLEMENTATION_UNAVAILABLE(HttpStatus.CONFLICT, "현재 지원하지 않는 게임 구현 또는 모드입니다."),
     GAME_CONFIGURATION_INVALID(HttpStatus.BAD_REQUEST, "게임 구현이 지원하는 설정 범위를 확인해 주세요."),
+    // 임의 장르·그래픽·인원을 카드 라벨로 위장하는 요청은 별도 입력 오류로 거절한다.
+    GAME_CARD_LABEL_INVALID(HttpStatus.BAD_REQUEST, "선택한 카드 라벨이 현재 게임 정보와 맞지 않습니다. 라벨을 다시 선택해 주세요."),
+    GAME_FILTER_NOT_FOUND(HttpStatus.NOT_FOUND, "게임 필터를 찾을 수 없습니다."),
+    GAME_FILTER_CONFIGURATION_INVALID(HttpStatus.BAD_REQUEST, "필터 유형과 조건을 확인해 주세요."),
+    GAME_FILTER_IN_USE(HttpStatus.CONFLICT, "연결된 게임이 있어 삭제하거나 조건을 변경할 수 없습니다. 게임 연결을 먼저 해제해 주세요."),
     GAME_CATALOG_CHANGED(HttpStatus.CONFLICT, "게임 설정이 변경되었습니다. 다시 조회해 주세요."),
     GAME_CATALOG_CONFLICT(HttpStatus.CONFLICT, "이미 등록되었거나 다른 변경과 충돌하는 게임 설정입니다."),
     GAME_CATALOG_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "게임 목록을 일시적으로 확인할 수 없습니다."),
@@ -91,6 +96,9 @@ public enum ErrorCode {
     ROOM_KICKED_REJOIN_ALLOWED(HttpStatus.FORBIDDEN, "방장에 의해 강퇴되었습니다. 이 방에 다시 참여할 수 있습니다."),
     ROOM_KICK_FORBIDDEN(HttpStatus.FORBIDDEN, "상대 강퇴는 대기 중인 방장만 할 수 있습니다."),
     ROOM_KICK_TARGET_CHANGED(HttpStatus.CONFLICT, "참가자 정보가 변경되었습니다. 확인 후 다시 시도해 주세요."),
+    // 설정 변경 권한과 오래된 편집 충돌을 인증 만료·대국 오류와 구분한다.
+    ROOM_SETTINGS_FORBIDDEN(HttpStatus.FORBIDDEN, "방 설정은 현재 방장만 변경할 수 있습니다."),
+    ROOM_SETTINGS_CHANGED(HttpStatus.CONFLICT, "방 상태가 변경되었습니다. 최신 설정을 확인한 뒤 다시 저장해 주세요."),
 
     // 대국의 늦은 명령과 금수를 구분해 정상 로그인이나 진행 중인 판을 폐기하지 않는다.
     GAME_STATE_CHANGED(HttpStatus.CONFLICT, "대국 상태가 변경되었습니다. 현재 판을 확인하고 다시 시도해 주세요."),

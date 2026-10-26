@@ -32,6 +32,8 @@ public class RoomRateLimitService {
     // 방장 강퇴는 준비·퇴장과 별도 계정 예산으로 제한한다.
     public void kick(Long userId) { acquire(userId, "kick", 15, 60_000); }
     public void ready(Long userId) { acquire(userId, "ready", 30, 60_000); }
+    // 설정 변경과 비밀번호 해시 계산은 조회·준비와 별도 계정 예산으로 제한한다.
+    public void settings(Long userId) { acquire(userId, "settings", 15, 60_000); }
     public void leave(Long userId) { acquire(userId, "leave", 30, 60_000); }
     // 문서 열기·닫기는 상태 폴링과 별개이며 종료 알림의 중복 전송도 제한한다.
     public void lifecycle(Long userId) { acquire(userId, "lifecycle", 60, 60_000); }

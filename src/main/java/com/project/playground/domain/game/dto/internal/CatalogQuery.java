@@ -10,6 +10,7 @@ public class CatalogQuery {
     public enum Players { SINGLE, TWO, GROUP, MULTIPLAYER }
     private final String query;
     private final String genre;
+    private final String filter;
     private final GraphicsType graphics;
     private final Players players;
     private final Integer humanPlayers;

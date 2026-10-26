@@ -21,7 +21,7 @@ import java.util.*;
 /** 전체 순서 버전 확인·이동·감사 기록을 함께 커밋한다. 검색 결과나 페이지 일부를 전체 순서로 덮어쓰지 않는다. */
 @Service @RequiredArgsConstructor
 public class CatalogOrderingService {
-    private static final Set<Integer> PAGE_SIZES = Set.of(10, 20, 30, 50);
+    private static final Set<Integer> PAGE_SIZES = Set.of(10, 20, 30, 40, 50);
     private final CatalogOrderStateRepository states;
     private final CatalogOrderQueryRepository queries;
     private final RoleRepository roles;
@@ -30,7 +30,7 @@ public class CatalogOrderingService {
 
     @Transactional(readOnly = true)
     public CatalogOrderPageResponse page(Long actorId, CatalogOrderType type, int page, int size) {
-        if (page < 1 || !PAGE_SIZES.contains(size)) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        if (page < 1 || !PAGE_SIZES.contains(size) || type == CatalogOrderType.FILTER && size == 10) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         // MySQL 반복 읽기의 스냅샷을 만들기 전에 목록을 잠가 버전과 행이 서로 다른 시점을 가리키지 않게 한다.
         var state = states.findForRead(type).orElseThrow(() -> new BusinessException(ErrorCode.GAME_CATALOG_UNAVAILABLE));
         authorization.require(actorId, PermissionCode.GAME_READ);
@@ -86,6 +86,12 @@ public class CatalogOrderingService {
         return CatalogOrderResponse.builder().version(state.getVersion()).build();
     }
 
+    /** 연결 없는 필터 삭제 후 연속 순번과 순서 버전을 같은 트랜잭션에서 갱신한다. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removed(CatalogOrderType type,int position) {
+        var state=states.findForUpdate(type).orElseThrow(() -> new BusinessException(ErrorCode.GAME_CATALOG_UNAVAILABLE));
+        queries.closeGap(type,position); state.advance();
+    }
     private static ErrorCode notFound(CatalogOrderType type) {
         return type == CatalogOrderType.GAME ? ErrorCode.CATALOG_GAME_NOT_FOUND : ErrorCode.CATALOG_GENRE_NOT_FOUND;
     }

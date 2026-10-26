@@ -22,11 +22,14 @@ public class GameResponse {
     private final long version;
     private final List<GameGenreResponse> genres;
     private final List<GameModeResponse> modes;
-    public static GameResponse from(Game game, List<GameGenreResponse> genres, List<GameModeResponse> modes) {
+    // 공개 응답은 현재 공개 장르·지원 모드와 일치하는 선택만 전달한다.
+    private final List<String> cardLabelCodes;
+    private final List<GameFilterResponse> cardLabels;
+    public static GameResponse from(Game game, List<GameGenreResponse> genres, List<GameModeResponse> modes, List<String> cardLabelCodes, List<GameFilterResponse> cardLabels) {
         return builder().code(game.getCode()).name(game.getName()).summary(game.getSummary()).description(game.getDescription())
                 // 표지는 게임 코드에 연결하므로 별도의 관리용 이미지 키를 반환하지 않는다.
                 .published(game.isPublished()).availability(game.getAvailability())
                 .unavailableMessage(game.getUnavailableMessage()).sortOrder(game.getSortOrder()).firstPublishedAt(game.getFirstPublishedAt())
-                .version(game.getVersion()).genres(genres).modes(modes).build();
+                .version(game.getVersion()).genres(genres).modes(modes).cardLabelCodes(cardLabelCodes).cardLabels(cardLabels).build();
     }
 }

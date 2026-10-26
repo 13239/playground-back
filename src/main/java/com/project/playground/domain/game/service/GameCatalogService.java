@@ -19,6 +19,7 @@ public class GameCatalogService {
     private final GameModeRepository modes;
     private final GameCatalogQueryRepository queries;
     private final GameModuleRegistry modules;
+    private final GameFilterRepository filters;
 
     public GamePageResponse list(CatalogQuery query, boolean publicOnly) {
         var found = queries.games(query, publicOnly);
@@ -32,13 +33,14 @@ public class GameCatalogService {
     public List<GameResponse> responses(List<Game> page, boolean publicOnly) {
         var grouped = page.isEmpty() ? Map.<Long, List<GameMode>>of() : modes.findByGameIdInOrderByIdAsc(page.stream().map(Game::getId).toList())
                 .stream().collect(Collectors.groupingBy(GameMode::getGameId));
-        return page.stream().map(game -> response(game, grouped.getOrDefault(game.getId(), List.of()), publicOnly)).toList();
+        var selected=selectedFilters(page);
+        return page.stream().map(game -> response(game, grouped.getOrDefault(game.getId(), List.of()), publicOnly,selected)).toList();
     }
     public GameResponse get(String code, boolean publicOnly) {
         var game = games.findByCode(code).filter(value -> !publicOnly || value.isPublished())
                 .orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_GAME_NOT_FOUND));
         if (publicOnly) modules.require(code);
-        return response(game, modes.findByGameIdInOrderByIdAsc(List.of(game.getId())), publicOnly);
+        return response(game, modes.findByGameIdInOrderByIdAsc(List.of(game.getId())), publicOnly,selectedFilters(List.of(game)));
     }
     public GameGenrePageResponse genres(String query, String cursor, int limit, boolean publicOnly) {
         // HTTP 외의 내부 호출도 페이지 범위를 지켜 잘못된 커서 인덱스나 무제한 조회를 만들지 않는다.
@@ -48,12 +50,25 @@ public class GameCatalogService {
         var last = found.size() > limit ? found.get(limit - 1) : null;
         return GameGenrePageResponse.builder().items(items).nextCursor(last == null ? null : CatalogCursor.encode(last.getSortOrder(), last.getId())).build();
     }
-    private GameResponse response(Game game, List<GameMode> found, boolean publicOnly) {
+    private GameResponse response(Game game, List<GameMode> found, boolean publicOnly, Map<String,GameFilter> selected) {
         var genres = game.getGenres().stream().filter(genre -> !publicOnly || genre.isEnabled())
-                .sorted(Comparator.comparingInt(GameGenre::getSortOrder).thenComparing(GameGenre::getId)).map(GameGenreResponse::from).toList();
+                .sorted(Comparator.comparingInt(GameFilter::getSortOrder).thenComparing(GameFilter::getId)).map(GameGenreResponse::from).toList();
         // 등록 시점이나 과거 수동 정렬값에 관계없이 배포 구현에서 정의한 모드 순서를 유지한다.
         var modeResponses = modules.orderedModes(game.getCode(), found).stream().filter(mode -> !publicOnly || mode.isPublished() && modules.supports(game.getCode(), mode))
                 .map(mode -> GameModeResponse.from(mode, modules.supports(game.getCode(), mode))).toList();
-        return GameResponse.from(game, genres, modeResponses);
+        // 카드 표시와 홈 검색 모두 명시적 선택·사용 상태·현재 지원 정보를 함께 적용한다.
+        var cardLabels=game.getCardLabelCodes().stream().map(selected::get).filter(Objects::nonNull)
+                .filter(f -> !publicOnly || f.isEnabled() && (f.getType()==com.project.playground.domain.game.enums.GameFilterType.GENRE
+                        ? genres.stream().anyMatch(g -> g.getCode().equals(f.getCode()))
+                        : modeResponses.stream().anyMatch(m -> f.supportsMode(m.getGraphicsType(),m.getMinHumanPlayers(),m.getMaxHumanPlayers()))))
+                .sorted(Comparator.comparingInt(GameFilter::getSortOrder)).map(f -> GameFilterResponse.from(f,0)).toList();
+        var selectedLabels=publicOnly ? cardLabels.stream().map(GameFilterResponse::getLabelCode).toList() : game.getCardLabelCodes().stream().sorted().toList();
+        return GameResponse.from(game,genres,modeResponses,selectedLabels,cardLabels);
     }
+    /** 페이지 전체의 선택 필터를 한 번에 읽어 게임별 추가 쿼리를 만들지 않는다. */
+    private Map<String,GameFilter> selectedFilters(List<Game> page) {
+        var codes=page.stream().flatMap(g -> g.getCardLabelCodes().stream()).map(label -> label.substring(label.indexOf(':')+1)).distinct().toList();
+        return codes.isEmpty() ? Map.of() : filters.findByCodeIn(codes).stream().collect(Collectors.toMap(GameFilter::getLabelCode,f -> f));
+    }
+
 }

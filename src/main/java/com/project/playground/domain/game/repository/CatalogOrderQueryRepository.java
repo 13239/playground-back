@@ -2,7 +2,7 @@ package com.project.playground.domain.game.repository;
 
 import com.project.playground.domain.game.dto.response.CatalogOrderItemResponse;
 import com.project.playground.domain.game.entity.QGame;
-import com.project.playground.domain.game.entity.QGameGenre;
+import com.project.playground.domain.game.entity.QGameFilter;
 import com.project.playground.domain.game.enums.CatalogOrderType;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
@@ -16,10 +16,17 @@ import java.util.stream.Collectors;
 public class CatalogOrderQueryRepository {
     private final JPAQueryFactory query;
 
+    /** 삭제한 필터 뒤의 순번만 당기고 편집 버전을 갱신한다. */
+    public void closeGap(CatalogOrderType type,int position) {
+        if(type!=CatalogOrderType.FILTER) throw new IllegalArgumentException("필터 순서만 삭제 정리할 수 있습니다.");
+        var f=QGameFilter.gameFilter;
+        query.update(f).set(f.sortOrder,f.sortOrder.subtract(1)).set(f.version,f.version.add(1)).set(f.updatedAt,Instant.now())
+                .where(f.sortOrder.gt(position)).execute();
+    }
     public long count(CatalogOrderType type) {
         Long count = switch (type) {
             case GAME -> query.select(QGame.game.count()).from(QGame.game).fetchOne();
-            case GENRE -> query.select(QGameGenre.gameGenre.count()).from(QGameGenre.gameGenre).fetchOne();
+            case FILTER -> query.select(QGameFilter.gameFilter.count()).from(QGameFilter.gameFilter).fetchOne();
         };
         return count == null ? 0 : count;
     }
@@ -27,7 +34,7 @@ public class CatalogOrderQueryRepository {
     public int nextPosition(CatalogOrderType type) {
         Integer last = switch (type) {
             case GAME -> query.select(QGame.game.sortOrder.max()).from(QGame.game).fetchOne();
-            case GENRE -> query.select(QGameGenre.gameGenre.sortOrder.max()).from(QGameGenre.gameGenre).fetchOne();
+            case FILTER -> query.select(QGameFilter.gameFilter.sortOrder.max()).from(QGameFilter.gameFilter).fetchOne();
         };
         return last == null ? 0 : Math.incrementExact(last);
     }
@@ -41,8 +48,8 @@ public class CatalogOrderQueryRepository {
                         .map(row -> CatalogOrderItemResponse.builder().code(row.get(g.code)).name(row.get(g.name))
                                 .sortOrder(row.get(g.sortOrder)).version(row.get(g.version)).build()).toList();
             }
-            case GENRE -> {
-                var g = QGameGenre.gameGenre;
+            case FILTER -> {
+                var g = QGameFilter.gameFilter;
                 yield query.select(g.code, g.name, g.sortOrder, g.version).from(g)
                         .orderBy(g.sortOrder.asc(), g.id.asc()).offset(offset).limit(size).fetch().stream()
                         .map(row -> CatalogOrderItemResponse.builder().code(row.get(g.code)).name(row.get(g.name))
@@ -54,7 +61,7 @@ public class CatalogOrderQueryRepository {
     public Optional<Integer> position(CatalogOrderType type, String code) {
         return Optional.ofNullable(switch (type) {
             case GAME -> query.select(QGame.game.sortOrder).from(QGame.game).where(QGame.game.code.eq(code)).fetchOne();
-            case GENRE -> query.select(QGameGenre.gameGenre.sortOrder).from(QGameGenre.gameGenre).where(QGameGenre.gameGenre.code.eq(code)).fetchOne();
+            case FILTER -> query.select(QGameFilter.gameFilter.sortOrder).from(QGameFilter.gameFilter).where(QGameFilter.gameFilter.code.eq(code)).fetchOne();
         });
     }
 
@@ -65,8 +72,8 @@ public class CatalogOrderQueryRepository {
                 yield query.select(g.code, g.sortOrder).from(g).where(g.code.in(codes)).fetch().stream()
                         .collect(Collectors.toMap(row -> row.get(g.code), row -> row.get(g.sortOrder)));
             }
-            case GENRE -> {
-                var g = QGameGenre.gameGenre;
+            case FILTER -> {
+                var g = QGameFilter.gameFilter;
                 yield query.select(g.code, g.sortOrder).from(g).where(g.code.in(codes)).fetch().stream()
                         .collect(Collectors.toMap(row -> row.get(g.code), row -> row.get(g.sortOrder)));
             }
@@ -87,8 +94,8 @@ public class CatalogOrderQueryRepository {
                 query.update(g).set(g.sortOrder, target).set(g.version, g.version.add(1))
                         .set(g.updatedAt, now).where(g.code.eq(code)).execute();
             }
-            case GENRE -> {
-                var g = QGameGenre.gameGenre;
+            case FILTER -> {
+                var g = QGameFilter.gameFilter;
                 var range = target < source ? g.sortOrder.goe(target).and(g.sortOrder.lt(source))
                         : g.sortOrder.gt(source).and(g.sortOrder.loe(target));
                 query.update(g).set(g.sortOrder, g.sortOrder.add(delta)).set(g.version, g.version.add(1))

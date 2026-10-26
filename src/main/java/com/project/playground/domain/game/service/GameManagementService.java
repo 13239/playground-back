@@ -11,6 +11,7 @@ import com.project.playground.domain.game.entity.*;
 import com.project.playground.domain.game.enums.CatalogOrderType;
 import com.project.playground.domain.game.module.*;
 import com.project.playground.domain.game.repository.*;
+import com.project.playground.domain.game.support.GameCardLabels;
 import com.project.playground.global.exception.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,7 +26,7 @@ public class GameManagementService {
     private final RoleRepository roles;
     private final GameRepository games;
     private final GameModeRepository modes;
-    private final GameGenreRepository genres;
+    private final GameFilterRepository genres;
     private final GameModuleRegistry modules;
     private final GameCatalogService catalog;
     private final AdminAuditService audit;
@@ -47,9 +48,11 @@ public class GameManagementService {
         if (games.existsByCode(request.getCode())) throw new BusinessException(ErrorCode.GAME_CATALOG_CONFLICT);
         var metadata = request.getMetadata();
         var assigned = validateMetadata(metadata, Set.of());
+        validateCardLabels(request.getCode(), null, assigned, metadata.getCardLabelCodes(), Set.of());
         var game = games.saveAndFlush(Game.builder().code(request.getCode()).name(metadata.getName()).summary(metadata.getSummary())
                 // 신규 게임은 전체 목록 끝에 배치하고 순서 편집 버전도 같은 트랜잭션에서 갱신한다.
-                .description(metadata.getDescription()).sortOrder(ordering.reserveLast(CatalogOrderType.GAME)).genres(assigned).build());
+                .description(metadata.getDescription()).sortOrder(ordering.reserveLast(CatalogOrderType.GAME)).genres(assigned)
+                .cardLabelCodes(metadata.getCardLabelCodes()).build());
         audit.write(actor, "GAME_CREATED", "GAME", game.getCode(), null, Map.of("after", snapshot(game)));
         return catalog.get(game.getCode(), false);
     }
@@ -59,8 +62,9 @@ public class GameManagementService {
         var game = locked(code); requireVersion(game.getVersion(), request.getExpectedVersion());
         modules.require(code);
         var metadata = request.getMetadata(); var assigned = validateMetadata(metadata, game.getGenres());
+        validateCardLabels(code, game.getId(), assigned, metadata.getCardLabelCodes(), game.getCardLabelCodes());
         var before = snapshot(game);
-        game.update(metadata.getName(), metadata.getSummary(), metadata.getDescription(), assigned);
+        game.update(metadata.getName(), metadata.getSummary(), metadata.getDescription(), assigned, metadata.getCardLabelCodes());
         games.flush();
         audit.write(actor, "GAME_UPDATED", "GAME", code, null, Map.of("before", before, "after", snapshot(game)));
         return catalog.get(code, false);
@@ -112,7 +116,7 @@ public class GameManagementService {
         var existing = genres.findForUpdate(code);
         if (create && existing.isPresent()) throw new BusinessException(ErrorCode.GAME_CATALOG_CONFLICT);
         // 생성 시에만 끝 순번을 할당하고 기존 장르의 일반 저장에서는 그리드 순서를 유지한다.
-        var genre = create ? GameGenre.builder().code(code).name(request.getName()).sortOrder(ordering.reserveLast(CatalogOrderType.GENRE)).enabled(request.getEnabled()).build()
+        var genre = create ? GameFilter.builder().code(code).name(request.getName()).sortOrder(ordering.reserveLast(CatalogOrderType.FILTER)).enabled(request.getEnabled()).build()
                 : existing.orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_GENRE_NOT_FOUND));
         if (create) requireVersion(0, request.getExpectedVersion()); else requireVersion(genre.getVersion(), request.getExpectedVersion());
         var before = create ? Map.<String, Object>of() : snapshot(genre);
@@ -128,15 +132,34 @@ public class GameManagementService {
         return authorization.require(actor, permission);
     }
     private Game locked(String code) { return games.findForUpdate(code).orElseThrow(() -> new BusinessException(ErrorCode.CATALOG_GAME_NOT_FOUND)); }
-    private Set<GameGenre> validateMetadata(GameMetadataRequest metadata, Set<GameGenre> previous) {
-        var assigned = genres.findByCodeIn(metadata.getGenreCodes());
+    private Set<GameFilter> validateMetadata(GameMetadataRequest metadata, Set<GameFilter> previous) {
+        var assigned = genres.findGenresByCodeIn(metadata.getGenreCodes());
         if (assigned.size() != metadata.getGenreCodes().size()) throw new BusinessException(ErrorCode.CATALOG_GENRE_NOT_FOUND);
         // 사용 중지한 장르의 기존 연결은 유지·제거할 수 있지만 다른 게임에 새로 연결하지는 못한다.
-        var previousCodes = previous.stream().map(GameGenre::getCode).collect(Collectors.toSet());
+        var previousCodes = previous.stream().map(GameFilter::getCode).collect(Collectors.toSet());
         if (assigned.stream().anyMatch(genre -> !genre.isEnabled() && !previousCodes.contains(genre.getCode()))) {
             throw new BusinessException(ErrorCode.CATALOG_GENRE_DISABLED);
         }
         return new HashSet<>(assigned);
+    }
+    /** DB에 등록한 필터만 선택하며 실제 구현이 지원하는 범위를 넘겨 분류하지 않는다. */
+    private void validateCardLabels(String code,Long gameId,Set<GameFilter> assigned,Set<String> selected,Set<String> previous) {
+        if(selected.isEmpty()) return;
+        var definitions=modules.require(code).modes();
+        var registered=gameId==null ? Map.<String,GameMode>of() : modes.findByGameIdInOrderByIdAsc(List.of(gameId)).stream().collect(Collectors.toMap(GameMode::getCode,m -> m));
+        var available=genres.findByCodeIn(selected.stream().map(label -> label.substring(label.indexOf(':')+1)).toList());
+        var allowed=new HashSet<String>();
+        for(var f:available) {
+            if(!f.isEnabled() && !previous.contains(f.getLabelCode())) continue;
+            boolean supported=f.getType()==com.project.playground.domain.game.enums.GameFilterType.GENRE
+                    ? assigned.stream().anyMatch(g -> g.getId().equals(f.getId()))
+                    : definitions.stream().anyMatch(d -> {
+                        var m=registered.get(d.getCode());
+                        return (m==null || modules.supports(code,m)) && f.supportsMode(d.getGraphicsType(),m==null ? d.getMinHumanPlayers() : m.getMinHumanPlayers(),m==null ? d.getMaxHumanPlayers() : m.getMaxHumanPlayers());
+                    });
+            if(supported) allowed.add(f.getLabelCode());
+        }
+        if(!allowed.containsAll(selected)) throw new BusinessException(ErrorCode.GAME_CARD_LABEL_INVALID);
     }
     private static void requireVersion(long actual, long expected) {
         if (actual != expected) throw new BusinessException(ErrorCode.GAME_CATALOG_CHANGED);
@@ -145,7 +168,9 @@ public class GameManagementService {
         var values = new LinkedHashMap<String, Object>();
         values.put("code", game.getCode()); values.put("name", game.getName()); values.put("summary", game.getSummary());
         values.put("description", game.getDescription());
-        values.put("genres", game.getGenres().stream().map(GameGenre::getCode).sorted().toList()); values.put("sortOrder", game.getSortOrder());
+        // 운영 감사에도 라벨 선택을 남겨 장르 연결 변경과 카드 표시 변경을 구분한다.
+        values.put("cardLabelCodes", game.getCardLabelCodes().stream().sorted().toList());
+        values.put("genres", game.getGenres().stream().map(GameFilter::getCode).sorted().toList()); values.put("sortOrder", game.getSortOrder());
         values.put("published", game.isPublished()); values.put("availability", game.getAvailability().name());
         values.put("message", game.getUnavailableMessage()); values.put("version", game.getVersion()); return values;
     }
@@ -154,7 +179,7 @@ public class GameManagementService {
                 "maxHumanPlayers", mode.getMaxHumanPlayers(), "definitionVersion", mode.getDefinitionVersion(),
                 "published", mode.isPublished(), "availability", mode.getAvailability().name(), "message", mode.getUnavailableMessage(), "version", mode.getVersion());
     }
-    private static Map<String, Object> snapshot(GameGenre genre) {
+    private static Map<String, Object> snapshot(GameFilter genre) {
         return Map.of("code", genre.getCode(), "name", genre.getName(), "enabled", genre.isEnabled(), "sortOrder", genre.getSortOrder(), "version", genre.getVersion());
     }
 }

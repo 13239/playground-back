@@ -35,20 +35,31 @@ public class Game {
     @ManyToMany
     @JoinTable(name = "tbl_game_genre_mapping", joinColumns = @JoinColumn(name = "game_id"), inverseJoinColumns = @JoinColumn(name = "genre_id"))
     @BatchSize(size = 100)
-    private Set<GameGenre> genres = new HashSet<>();
+    private Set<GameFilter> genres = new HashSet<>();
+
+    // 페이지 안의 라벨을 일괄 조회해 카드 수에 비례하는 개별 SELECT를 만들지 않는다.
+    @Getter(AccessLevel.NONE)
+    @ElementCollection
+    @CollectionTable(name = "tbl_game_card_label", joinColumns = @JoinColumn(name = "game_id"))
+    @Column(name = "label_code", nullable = false, length = 80)
+    @BatchSize(size = 100)
+    private Set<String> cardLabelCodes = new HashSet<>();
 
     @Builder
-    public Game(String code, String name, String summary, String description, int sortOrder, Set<GameGenre> genres) {
+    public Game(String code, String name, String summary, String description, int sortOrder, Set<GameFilter> genres, Set<String> cardLabelCodes) {
         this.code = code;
         this.sortOrder = sortOrder;
-        update(name, summary, description, genres);
+        update(name, summary, description, genres, cardLabelCodes == null ? Set.of() : cardLabelCodes);
     }
-    public Set<GameGenre> getGenres() { return Collections.unmodifiableSet(genres); }
+    public Set<GameFilter> getGenres() { return Collections.unmodifiableSet(genres); }
+    public Set<String> getCardLabelCodes() { return Collections.unmodifiableSet(cardLabelCodes); }
     /** 일반 정보 저장은 그리드에서 저장한 전체 노출 순서를 변경하지 않는다. */
-    public void update(String name, String summary, String description, Set<GameGenre> genres) {
+    public void update(String name, String summary, String description, Set<GameFilter> genres, Set<String> cardLabelCodes) {
         this.name = name.strip(); this.summary = summary.strip(); this.description = description.strip();
         // 표지는 프론트의 게임 코드별 구현에서 결정하고 관리 데이터에는 이미지 선택값을 저장하지 않는다.
         this.genres.clear(); this.genres.addAll(genres);
+        // 빈 선택은 라벨을 전부 숨긴다는 뜻이며 장르·모드에서 기본 라벨을 다시 생성하지 않는다.
+        this.cardLabelCodes.clear(); this.cardLabelCodes.addAll(cardLabelCodes);
     }
     /** 공개·이용 상태 편집은 메타데이터 편집과 별도 권한으로 호출한다. */
     public void changeAvailability(boolean published, GameAvailability availability, String message) {

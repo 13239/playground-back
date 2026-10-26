@@ -1,6 +1,6 @@
 package com.project.playground.domain.game.dto.response;
 
-import com.project.playground.domain.game.entity.GameGenre;
+import com.project.playground.domain.game.entity.GameFilter;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -11,7 +11,7 @@ public class GenreOptionResponse {
     private final String name;
     private final boolean enabled;
 
-    public static GenreOptionResponse from(GameGenre genre) {
+    public static GenreOptionResponse from(GameFilter genre) {
         return builder().code(genre.getCode()).name(genre.getName()).enabled(genre.isEnabled()).build();
     }
 }

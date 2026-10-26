@@ -93,6 +93,17 @@ public class GomokuRoom extends TimeEntity {
         revision++;
     }
 
+    /** 방 잠금과 권한 검증 후 설정을 함께 교체하고 늦은 조회·저장 요청을 구분한다. */
+    public void updateSettings(String title, RoomVisibility visibility, String passwordHash,
+                               short undoLimit, ForbiddenRule forbiddenRule) {
+        this.title = title;
+        this.visibility = visibility;
+        this.passwordHash = passwordHash;
+        this.undoLimit = undoLimit;
+        this.forbiddenRule = forbiddenRule;
+        revision++;
+    }
+
     /** 방장이 퇴장하면 남은 참가자가 방을 이어받으며 방 규칙은 변경하지 않는다. */
     public void transferHost(User successor) { host = successor; }
 

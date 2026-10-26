@@ -109,7 +109,7 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers("/api/test").permitAll()
                         // 카탈로그 공개 조회도 BFF 서버 인증은 통과한다. 모드 admission POST는 기존 인증을 요구한다.
-                        .requestMatchers(HttpMethod.GET, "/api/games", "/api/games/*", "/api/game-genres").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/games", "/api/games/*", "/api/game-genres", "/api/game-filters").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2

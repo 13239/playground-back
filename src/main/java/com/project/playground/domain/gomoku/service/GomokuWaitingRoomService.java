@@ -4,6 +4,7 @@ import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.domain.gomoku.dto.request.JoinRoomRequest;
 import com.project.playground.domain.gomoku.dto.request.KickRoomRequest;
 import com.project.playground.domain.gomoku.dto.request.RoomPageRequest;
+import com.project.playground.domain.gomoku.dto.request.UpdateRoomSettingsRequest;
 import com.project.playground.domain.gomoku.dto.response.WaitingRoomResponse;
 import com.project.playground.domain.gomoku.entity.GomokuRoom;
 import com.project.playground.domain.gomoku.entity.GomokuRoomKick;
@@ -184,6 +185,41 @@ public class GomokuWaitingRoomService {
                 .reentryBlocked(request.getBlockRejoin()).build());
         // 참가 제거·채팅 권한 회수·참가 순서 변경 및 이벤트 발행은 기존 퇴장 처리와 같다.
         removeMember(room, members, target);
+        return snapshot(room, members, userId);
+    }
+
+    /** 준비·입장·대국 시작과 같은 방 잠금에서 방장·현재 페이지·편집 당시 순서를 검증한다. */
+    public WaitingRoomResponse updateSettings(Long userId, UpdateRoomSettingsRequest request) {
+        limits.settings(userId);
+        activeUser(userId);
+        var room = openRoom(request.getRoomId());
+        if (!room.getHost().getId().equals(userId)) throw failure(ErrorCode.ROOM_SETTINGS_FORBIDDEN);
+        if (room.getStatus() != RoomStatus.WAITING) throw failure(ErrorCode.GAME_STATE_CHANGED);
+        var members = new ArrayList<>(participants.findMembers(room.getId()));
+        var host = requireMember(members, userId);
+        if (!host.ownsPage(request.getPageId())) throw failure(ErrorCode.ROOM_PAGE_IN_USE);
+        if (room.getRevision() != request.getRevision()) throw failure(ErrorCode.ROOM_SETTINGS_CHANGED);
+
+        // 원래 비공개인 방만 빈 입력으로 해시를 유지한다. 공개 전환 시에는 이전 해시를 폐기한다.
+        boolean hasPassword = request.getPassword() != null && !request.getPassword().isEmpty();
+        if (request.getVisibility() == RoomVisibility.PRIVATE && !hasPassword
+                && (room.getVisibility() != RoomVisibility.PRIVATE || room.getPasswordHash() == null)) {
+            throw failure(ErrorCode.ROOM_PASSWORD_REQUIRED);
+        }
+        String title = request.getTitle().strip();
+        boolean changed = !room.getTitle().equals(title) || room.getVisibility() != request.getVisibility()
+                || room.getUndoLimit() != request.getUndoLimit() || room.getForbiddenRule() != request.getForbiddenRule()
+                || hasPassword;
+        if (changed) {
+            String passwordHash = request.getVisibility() == RoomVisibility.PUBLIC ? null
+                    : hasPassword ? passwords.encode(request.getPassword()) : room.getPasswordHash();
+            room.updateSettings(title, request.getVisibility(), passwordHash, request.getUndoLimit(), request.getForbiddenRule());
+            // 변경된 규칙에 두 참가자가 다시 동의하도록 준비를 해제하고 커밋 이후 대기실·로비를 갱신한다.
+            members.forEach(member -> member.ready(false));
+            events.changed(room.getId());
+            lobbyEvents.changed();
+        }
+        host.seen(gomokuClock.instant());
         return snapshot(room, members, userId);
     }
 

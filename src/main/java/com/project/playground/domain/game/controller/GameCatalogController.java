@@ -20,11 +20,12 @@ public class GameCatalogController {
     @GetMapping("/api/games")
     public ResponseEntity<GamePageResponse> list(@RequestParam(required = false) @Size(max = 100) String query,
             @RequestParam(required = false) @Pattern(regexp = "[A-Z][A-Z0-9_]{0,63}") String genre,
+            @RequestParam(required = false) @Pattern(regexp = "[A-Z][A-Z0-9_]{0,63}") String filter,
             @RequestParam(required = false) GraphicsType graphics, @RequestParam(required = false) CatalogQuery.Players players,
             @RequestParam(required = false) @Min(1) @Max(10000) Integer humanPlayers,
             @RequestParam(defaultValue = "false") boolean newOnly, @RequestParam(required = false) @Size(max = 27) String cursor,
             @RequestParam(defaultValue = "40") @Min(1) @Max(100) int limit) {
-        return response(catalog.list(CatalogQuery.builder().query(query).genre(genre).graphics(graphics).players(players)
+        return response(catalog.list(CatalogQuery.builder().query(query).genre(genre).filter(filter).graphics(graphics).players(players)
                 .humanPlayers(humanPlayers).newOnly(newOnly).cursor(cursor).limit(limit).build(), true));
     }
     @GetMapping("/api/games/{code}")

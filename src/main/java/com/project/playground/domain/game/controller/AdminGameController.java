@@ -43,13 +43,13 @@ public class AdminGameController {
     public ResponseEntity<CatalogOrderPageResponse> genreOrder(@AuthenticationPrincipal Session session,
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(10) @Max(50) int size) {
-        return response(ordering.page(session.getId(), CatalogOrderType.GENRE, page, size));
+        return response(ordering.page(session.getId(), CatalogOrderType.FILTER, page, size));
     }
 
     @PutMapping("/game-genres/order") @RequireAdminPermission(PermissionCode.GAME_WRITE)
     public ResponseEntity<CatalogOrderResponse> reorderGenres(@AuthenticationPrincipal Session session,
             @Valid @RequestBody CatalogOrderRequest request) {
-        return response(ordering.reorder(session.getId(), CatalogOrderType.GENRE, request));
+        return response(ordering.reorder(session.getId(), CatalogOrderType.FILTER, request));
     }
 
     @GetMapping("/games") @RequireAdminPermission(PermissionCode.GAME_READ)

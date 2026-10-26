@@ -132,7 +132,7 @@ public class AdminLogQueryRepository {
         var games = QGame.game;
         if (grouped.containsKey("GAME")) timed(query.select(games.code, games.name).from(games).where(games.code.in(grouped.get("GAME")))).fetch()
                 .forEach(row -> names.put("GAME:" + row.get(games.code), row.get(games.name) + " (" + row.get(games.code) + ")"));
-        var genres = QGameGenre.gameGenre;
+        var genres = QGameFilter.gameFilter;
         if (grouped.containsKey("GAME_GENRE")) timed(query.select(genres.code, genres.name).from(genres).where(genres.code.in(grouped.get("GAME_GENRE")))).fetch()
                 .forEach(row -> names.put("GAME_GENRE:" + row.get(genres.code), row.get(genres.name) + " (" + row.get(genres.code) + ")"));
         if (grouped.containsKey("ROLE")) roleNames(grouped.get("ROLE")).forEach((code, name) -> names.put("ROLE:" + code, name + " (" + code + ")"));

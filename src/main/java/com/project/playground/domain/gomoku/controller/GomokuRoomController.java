@@ -57,6 +57,13 @@ public class GomokuRoomController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.kick(session.getId(), request));
     }
 
+    /** 방 설정도 현재 방장·점유 페이지·최신 순서 확인 후 공개 스냅샷으로만 반환한다. */
+    @PostMapping("/settings")
+    public ResponseEntity<WaitingRoomResponse> settings(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+                                                       @Valid @RequestBody UpdateRoomSettingsRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(waiting.updateSettings(session.getId(), request));
+    }
+
     @PostMapping("/leave")
     public ResponseEntity<Void> leave(@AuthenticationPrincipal(errorOnInvalidType = true) Session session,
                                       @Valid @RequestBody LeaveRoomRequest request) {

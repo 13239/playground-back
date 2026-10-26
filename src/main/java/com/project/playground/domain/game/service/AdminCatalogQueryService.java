@@ -3,7 +3,7 @@ package com.project.playground.domain.game.service;
 import com.project.playground.domain.authorization.enums.PermissionCode;
 import com.project.playground.domain.authorization.service.AdminAuthorizationService;
 import com.project.playground.domain.game.dto.response.*;
-import com.project.playground.domain.game.entity.GameGenre;
+import com.project.playground.domain.game.entity.GameFilter;
 import com.project.playground.domain.game.enums.CatalogOrderType;
 import com.project.playground.domain.game.repository.*;
 import com.project.playground.global.exception.*;
@@ -20,7 +20,7 @@ public class AdminCatalogQueryService {
     private final CatalogOrderStateRepository states;
     private final AdminAuthorizationService authorization;
     private final GameCatalogQueryRepository queries;
-    private final GameGenreRepository genres;
+    private final GameFilterRepository genres;
     private final GameCatalogService catalog;
 
     /** 선택기는 관리 그리드와 같은 정렬을 사용하되 현재 필요한 옵션 페이지만 조회한다. */
@@ -44,11 +44,11 @@ public class AdminCatalogQueryService {
                 .page(current).size(size).totalPages(pages).totalElements(count).orderVersion(version).build();
     }
     public AdminCatalogPageResponse<AdminGenreResponse> genres(Long actor, String search, int page, int size) {
-        long version = readVersion(actor, CatalogOrderType.GENRE, page, size);
+        long version = readVersion(actor, CatalogOrderType.FILTER, page, size);
         long count = queries.adminGenreCount(search);
         int pages = pages(count, size), current = Math.min(page, pages);
         var found = queries.adminGenres(search, (long) (current - 1) * size, size);
-        var counts = queries.genreGameCounts(found.stream().map(GameGenre::getId).toList());
+        var counts = queries.genreGameCounts(found.stream().map(GameFilter::getId).toList());
         return AdminCatalogPageResponse.<AdminGenreResponse>builder()
                 .items(found.stream().map(genre -> AdminGenreResponse.from(genre, counts.getOrDefault(genre.getId(), 0L))).toList())
                 .page(current).size(size).totalPages(pages).totalElements(count).orderVersion(version).build();
