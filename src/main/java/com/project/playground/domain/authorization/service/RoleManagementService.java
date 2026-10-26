@@ -12,6 +12,8 @@ import com.project.playground.domain.user.repository.UserRepository;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** 역할 편집·회원 배정은 서버의 현재 권한, 변경 버전, 동기 감사 기록을 한 트랜잭션으로 처리한다. */
 @Service
@@ -34,11 +37,27 @@ public class RoleManagementService {
     private final RedisSessionRepository sessions;
     private final AccessPolicyRepository accessPolicies;
 
-    public RoleListResponse list(Long actorId, String query, String cursor, int limit) {
+    /** 번호 페이지는 역할 기본 정보만 조회하며 기능 컬렉션은 상세를 열 때 읽는다. */
+    public RolePageResponse list(Long actorId, String query, int page, int size) {
         authorization.require(actorId, PermissionCode.ROLE_READ);
-        // SQL LIKE 와일드카드를 일반 검색 문자로 취급하며 요청자가 전체 페이지 크기를 늘리지 못하게 한다.
-        String search = query == null || query.isBlank() ? null : "%" + query.strip().toLowerCase(Locale.ROOT)
-                .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+        if (page < 1 || !Set.of(10, 20, 30, 50).contains(size)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+        String search = roleSearch(query);
+        boolean nameOnly = search != null && !query.strip().chars().allMatch(value -> value <= 0x7f);
+        var result = searchPage(search, nameOnly, PageRequest.of(page - 1, size));
+        int totalPages = Math.max(1, result.getTotalPages());
+        int currentPage = Math.min(page, totalPages);
+        // 마지막 행 삭제나 다른 관리자의 변경으로 페이지가 줄면 유효한 마지막 페이지로 보정한다.
+        if (currentPage != page) result = searchPage(search, nameOnly, PageRequest.of(currentPage - 1, size));
+        return RolePageResponse.builder().items(result.getContent().stream().map(RoleSummaryResponse::from).toList())
+                .page(currentPage).size(size).totalPages(totalPages).totalElements(result.getTotalElements()).build();
+    }
+
+    public RoleListResponse options(Long actorId, String query, String cursor, int limit) {
+        authorization.require(actorId, PermissionCode.ROLE_READ);
+        // SQL LIKE 와일드카드는 공통 검색 변환에서 처리하며 요청자가 전체 페이지 크기를 늘리지 못하게 한다.
+        String search = roleSearch(query);
         // 한글 검색어는 UTF-8 이름에만 비교한다. 코드 커서는 두 조회에서 동일하게 유지한다.
         var pageable = PageRequest.of(0, Math.clamp(limit, 1, 100));
         var page = search == null || query.strip().chars().allMatch(value -> value <= 0x7f)
@@ -46,6 +65,16 @@ public class RoleManagementService {
         var items = page.getContent().stream().map(RoleSummaryResponse::from).toList();
         return RoleListResponse.builder().items(items)
                 .nextCursor(page.hasNext() ? items.getLast().getCode() : null).build();
+    }
+
+    /** 한글 검색은 ASCII 코드 컬럼을 제외하며 번호 페이지와 선택기에 같은 LIKE 이스케이프를 적용한다. */
+    private static String roleSearch(String query) {
+        return query == null || query.isBlank() ? null : "%" + query.strip().toLowerCase(Locale.ROOT)
+                .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+    }
+
+    private Page<Role> searchPage(String search, boolean nameOnly, Pageable pageable) {
+        return nameOnly ? roles.searchNamePage(search, pageable) : roles.searchPage(search, pageable);
     }
 
     public RoleDetailsResponse get(Long actorId, String code) {
@@ -98,10 +127,12 @@ public class RoleManagementService {
         var role = findRole(code);
         requireVersion(role.getVersion(), expectedVersion);
         role.assertDeletable();
+        // 회원이 없는 시점에도 USER는 신규 가입 기본값으로 사용 중이므로 삭제하면 가입이 실패한다.
+        if (Role.DEFAULT_ROLE.equals(code)) throw new BusinessException(ErrorCode.ROLE_DEFAULT_IN_USE);
         if (users.existsByRoleCode(code)) throw new BusinessException(ErrorCode.ROLE_IN_USE);
         // 접속 허용 중인 역할은 정책에서 먼저 제외해야 한다. 과거 폐기 이력은 삭제 후에도 보존한다.
         if (accessPolicies.findById(1L).orElseThrow().getExemptRoleCodes().contains(code)) {
-            throw new BusinessException(ErrorCode.ROLE_IN_USE);
+            throw new BusinessException(ErrorCode.ROLE_ACCESS_POLICY_IN_USE);
         }
         var before = snapshot(role);
         roles.delete(role);
@@ -119,7 +150,7 @@ public class RoleManagementService {
         String before = user.getRoleCode();
         // 최고 관리자 보호는 같은 역할로의 요청에도 먼저 적용한다.
         user.assertNotSuperAdmin();
-        if (Role.SUPER_ADMIN.equals(request.getRoleCode())) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        if (Role.ROOT.equals(request.getRoleCode())) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
         if (before.equals(request.getRoleCode())) return UserRoleResponse.from(user);
         // 역할에 결합된 기존 세션을 먼저 종료한다. 실패하면 DB 역할도 변경하지 않는다.
         sessions.revokeAll(userId);

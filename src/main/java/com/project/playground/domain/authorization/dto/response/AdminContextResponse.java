@@ -30,8 +30,9 @@ public class AdminContextResponse {
         this.permissions = Set.copyOf(permissions);
     }
 
+    /** 기존 응답의 최고 관리자 플래그도 현재 코드 ROOT로만 계산한다. */
     public boolean isSuperAdmin() {
-        return Role.SUPER_ADMIN.equals(roleCode);
+        return Role.ROOT.equals(roleCode);
     }
 
     public boolean allows(PermissionCode permission) {

@@ -38,8 +38,11 @@ public enum ErrorCode {
     // 관리자 정책 오류는 인증 실패와 구분하며 상세 내부 정보는 반환하지 않는다.
     ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "역할을 찾을 수 없습니다."),
     ROLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 존재하는 역할 코드입니다."),
-    ROLE_PROTECTED(HttpStatus.CONFLICT, "보호된 기본 역할 또는 슈퍼 관리자 계정은 변경할 수 없습니다."),
-    ROLE_IN_USE(HttpStatus.CONFLICT, "배정된 회원이 있는 역할은 삭제할 수 없습니다."),
+    ROLE_PROTECTED(HttpStatus.CONFLICT, "ROOT 권한 또는 ROOT 계정은 변경하거나 삭제할 수 없습니다."),
+    // 역할의 실제 사용처를 구분해 삭제 거절 팝업에서 해결할 대상을 안내한다.
+    ROLE_IN_USE(HttpStatus.CONFLICT, "회원에게 배정되어 사용 중인 권한은 삭제할 수 없습니다."),
+    ROLE_ACCESS_POLICY_IN_USE(HttpStatus.CONFLICT, "접속 허용 설정에서 사용 중인 권한입니다. 설정에서 해당 권한을 먼저 제외해 주세요."),
+    ROLE_DEFAULT_IN_USE(HttpStatus.CONFLICT, "신규 회원가입의 기본 권한으로 사용 중이므로 삭제할 수 없습니다."),
     ROLE_PERMISSION_NOT_ASSIGNABLE(HttpStatus.BAD_REQUEST, "해당 기능 권한은 다른 역할에 배정할 수 없습니다."),
     AUTHORIZATION_CHANGED(HttpStatus.CONFLICT, "역할 또는 권한이 변경되었습니다. 다시 조회해 주세요."),
     AUTHORIZATION_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "권한 정보를 일시적으로 확인할 수 없습니다."),

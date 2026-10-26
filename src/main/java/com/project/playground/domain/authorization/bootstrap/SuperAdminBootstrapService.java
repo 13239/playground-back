@@ -27,13 +27,13 @@ public class SuperAdminBootstrapService {
         roles.lockAuthorizationPolicy().orElseThrow(() -> new IllegalStateException("초기 역할 데이터가 없습니다."));
         var user = users.findForUpdateByUsername(username)
                 .filter(value -> value.getDeletedAt() == null && value.getStatus() == UserStatus.ACTIVE)
-                .orElseThrow(() -> new IllegalStateException("슈퍼 관리자 초기 배정 대상인 기존 활성 계정이 없습니다."));
-        var existing = users.findByRoleCode(Role.SUPER_ADMIN);
+                .orElseThrow(() -> new IllegalStateException("ROOT 초기 배정 대상인 기존 활성 계정이 없습니다."));
+        var existing = users.findByRoleCode(Role.ROOT);
         if (existing.isPresent()) {
             var owner = existing.get();
             // 아이디의 대소문자 비교도 실제 DB 조회 규칙을 따르고 최종 소유자는 회원 ID로 대조한다.
             if (!owner.getId().equals(user.getId()) || owner.getDeletedAt() != null || owner.getStatus() != UserStatus.ACTIVE) {
-                throw new IllegalStateException("기존 슈퍼 관리자와 초기 설정이 일치하지 않습니다.");
+                throw new IllegalStateException("기존 ROOT와 초기 설정이 일치하지 않습니다.");
             }
             return owner.getId();
         }
@@ -42,8 +42,9 @@ public class SuperAdminBootstrapService {
         sessions.revokeAll(user.getId());
         user.initializeSuperAdmin();
         users.flush();
+        // 기존 초기 배정 이벤트 코드는 감사 이력과 호환하고 실제 배정 코드는 ROOT로 기록한다.
         audit.write(null, "SUPER_ADMIN_INITIALIZED", "USER", user.getId().toString(), "명시적 최고 관리자 초기 설정",
-                Map.of("before", previousRole, "after", Role.SUPER_ADMIN));
+                Map.of("before", previousRole, "after", Role.ROOT));
         return user.getId();
     }
 }

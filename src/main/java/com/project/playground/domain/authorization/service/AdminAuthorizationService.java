@@ -30,7 +30,8 @@ public class AdminAuthorizationService {
         var context = AdminContextResponse.builder()
                 .userId(userId).roleCode(role.getCode()).roleName(role.getName())
                 .roleVersion(role.getVersion()).membershipVersion(membership.getRoleVersion())
-                .permissions(role.isSuperAdmin() ? EnumSet.allOf(PermissionCode.class)
+                // ROOT는 삭제 보호와 같은 코드 판별로 전체 기능을 부여하며 DB 플래그를 읽지 않는다.
+                .permissions(role.isRoot() ? EnumSet.allOf(PermissionCode.class)
                         : role.getPermissions().stream().filter(value -> !value.isSuperAdminOnly()).collect(Collectors.toUnmodifiableSet()))
                 .build();
         if (!context.allows(PermissionCode.ADMIN_ACCESS) || !context.allows(permission)

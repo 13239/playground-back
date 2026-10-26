@@ -8,7 +8,7 @@ import lombok.extern.jackson.Jacksonized;
 
 import java.util.Set;
 
-/** 코드와 허용 기능만 입력받으며 기본 역할/슈퍼 관리자 여부는 클라이언트가 지정하지 못한다. */
+/** 코드와 허용 기능만 입력받으며 삭제 보호 플래그는 두지 않고 ROOT 코드는 기존 행과 중복될 수 없다. */
 @Getter
 @Builder
 @Jacksonized

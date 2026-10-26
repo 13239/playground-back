@@ -41,12 +41,24 @@ public class AdminAuthorizationController {
 
     @GetMapping("/roles")
     @RequireAdminPermission(PermissionCode.ROLE_READ)
-    public ResponseEntity<RoleListResponse> list(
+    public ResponseEntity<RolePageResponse> list(
+            @AuthenticationPrincipal(errorOnInvalidType = true) Session session,
+            @RequestParam(required = false) @Size(max = 100) String query,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "10") @Min(10) @Max(50) int size) {
+        // 관리 그리드는 서버가 계산한 전체 페이지 수와 현재 페이지를 함께 사용한다.
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(roles.list(session.getId(), query, page, size));
+    }
+
+    /** 운영 설정의 선택 목록은 기존 코드 커서 계약을 유지해 그리드의 집계 조회와 분리한다. */
+    @GetMapping("/roles/options")
+    @RequireAdminPermission(PermissionCode.ROLE_READ)
+    public ResponseEntity<RoleListResponse> options(
             @AuthenticationPrincipal(errorOnInvalidType = true) Session session,
             @RequestParam(required = false) @Size(max = 100) String query,
             @RequestParam(required = false) @Pattern(regexp = "[A-Z][A-Z0-9_]{0,63}") String cursor,
             @RequestParam(defaultValue = "30") @Min(1) @Max(100) int limit) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(roles.list(session.getId(), query, cursor, limit));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(roles.options(session.getId(), query, cursor, limit));
     }
 
     @GetMapping("/roles/{code}")

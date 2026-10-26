@@ -4,6 +4,8 @@ import com.project.playground.domain.authorization.enums.PermissionCode;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.Set;
+
 /** 기능 코드는 구현에 연결된 사전이며 화면에서는 이 목록을 역할별로 배정한다. */
 @Getter
 @Builder
@@ -12,10 +14,13 @@ public class PermissionResponse {
     private final String name;
     private final String category;
     private final boolean superAdminOnly;
+    private final String description;
+    private final Set<PermissionCode> requiredPermissions;
 
     public static PermissionResponse from(PermissionCode code) {
         return PermissionResponse.builder().code(code).name(code.getDisplayName())
-                .category(code.getCategory()).superAdminOnly(code.isSuperAdminOnly()).build();
+                .category(code.getCategory()).superAdminOnly(code.isSuperAdminOnly())
+                .description(code.getDescription()).requiredPermissions(code.getRequiredPermissions()).build();
     }
 }
 

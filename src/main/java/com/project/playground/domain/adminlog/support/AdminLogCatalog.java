@@ -19,7 +19,8 @@ public final class AdminLogCatalog {
             "GAME_GENRE_CREATED", "장르 추가", "GAME_GENRE_UPDATED", "장르 수정",
             // 그리드 순서 저장은 일반 정보 변경과 구분해 조회·필터링한다.
             "GAME_ORDER_UPDATED", "게임 노출 순서 변경", "GAME_GENRE_ORDER_UPDATED", "장르 노출 순서 변경",
-            "SUPER_ADMIN_INITIALIZED", "슈퍼 관리자 초기 지정");
+            // 저장된 초기 배정 이벤트 코드는 유지하고 현재 최상위 역할 이름을 표시한다.
+            "SUPER_ADMIN_INITIALIZED", "ROOT 초기 지정");
     private static final Map<String, String> TARGETS = ordered("USER", "회원", "ROLE", "권한", "ACCESS_POLICY", "운영 설정",
             "GAME", "게임", "GAME_MODE", "게임 모드", "GAME_GENRE", "장르");
     public static String action(String code) { return ACTIONS.getOrDefault(code, code); }

@@ -107,22 +107,22 @@ public class User extends TimeEntity {
         this.status = UserStatus.INACTIVE;
     }
 
-    /** Redis 차단 전에 호출하며 유일한 슈퍼 관리자가 이용 불가 상태가 되는 것을 막는다. */
+    /** Redis 차단 전에 호출하며 유일한 ROOT가 이용 불가 상태가 되는 것을 막는다. */
     public void assertNotSuperAdmin() {
-        if (Role.SUPER_ADMIN.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        if (Role.ROOT.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
     }
 
     /** 일반 역할 변경으로 최고 권한을 만들거나 마지막 최고 권한을 없애지 않는다. */
     public void changeRole(String roleCode) {
         assertNotSuperAdmin();
-        if (Role.SUPER_ADMIN.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        if (Role.ROOT.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
         assignRole(Objects.requireNonNull(roleCode));
     }
 
     /** 명시적인 초기 설정 서비스만 사용하며 활성 상태의 기존 계정에 최고 권한을 배정한다. */
     public void initializeSuperAdmin() {
         if (getDeletedAt() != null || status != UserStatus.ACTIVE) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
-        assignRole(Role.SUPER_ADMIN);
+        assignRole(Role.ROOT);
     }
 
     /** 상위 클래스의 소프트 삭제 경로에서도 최고 관리자 보호 규칙을 적용한다. */

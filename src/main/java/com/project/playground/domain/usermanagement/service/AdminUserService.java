@@ -88,7 +88,7 @@ public class AdminUserService {
         var actor = requireWrite(actorId, PermissionCode.USER_SESSION_REVOKE);
         var user = locked(targetId);
         requireVersion(user.getManagementVersion(), request.getExpectedVersion());
-        // 일반 관리자가 최고 관리자의 세션을 종료하지 못하게 하고, 슈퍼 관리자 본인의 종료는 허용한다.
+        // 일반 관리자가 최고 관리자의 세션을 종료하지 못하게 하고, ROOT 본인의 종료는 허용한다.
         if (!actor.isSuperAdmin()) user.assertNotSuperAdmin();
         sessions.revokeAll(targetId);
         audit.write(actor, "USER_SESSIONS_REVOKED", "USER", targetId.toString(), request.getReason(), Map.of("version", user.getManagementVersion()));

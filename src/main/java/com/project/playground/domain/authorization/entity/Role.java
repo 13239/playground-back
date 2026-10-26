@@ -24,7 +24,7 @@ import java.util.Set;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Role {
-    public static final String SUPER_ADMIN = "SUPER_ADMIN";
+    public static final String ROOT = "ROOT";
     public static final String DEFAULT_ROLE = "USER";
 
     @Id
@@ -37,8 +37,9 @@ public class Role {
     @Column(length = 255)
     private String description;
 
-    @Column(name = "system_role", nullable = false, updatable = false)
-    private boolean systemRole;
+    // 처음 제공한 역할은 DB의 0~3 순서를 사용하고 추가 역할은 그 뒤에서 코드순으로 표시한다.
+    @Column(name = "sort_order", nullable = false)
+    private int sortOrder = 4;
 
     @Version
     // null 버전으로 신규 엔티티를 식별해 코드가 있는 새 역할도 merge가 아닌 persist로 생성한다.
@@ -73,11 +74,12 @@ public class Role {
         return Collections.unmodifiableSet(permissions);
     }
 
-    public boolean isSuperAdmin() {
-        return SUPER_ADMIN.equals(code);
+    public boolean isRoot() {
+        // 최고 관리자 판별은 변경할 수 없는 ROOT 코드만 사용하며 별도 DB 플래그에 의존하지 않는다.
+        return ROOT.equals(code);
     }
 
-    /** 슈퍼 관리자 행은 공통 정책 잠금에도 사용하므로 일반 편집으로 바꾸지 않는다. */
+    /** ROOT 행은 공통 정책 잠금에도 사용하므로 일반 편집으로 바꾸지 않는다. */
     public void update(String name, String description, Set<PermissionCode> permissions) {
         assertEditable();
         this.name = name;
@@ -85,12 +87,13 @@ public class Role {
         replacePermissions(permissions);
     }
 
+    /** ROOT는 사용 여부와 관계없이 삭제할 수 없으며 다른 역할의 사용 여부는 서비스에서 검사한다. */
     public void assertDeletable() {
-        if (systemRole || isSuperAdmin()) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        if (isRoot()) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
     }
 
     private void assertEditable() {
-        if (isSuperAdmin()) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
+        if (isRoot()) throw new BusinessException(ErrorCode.ROLE_PROTECTED);
     }
 
     private void replacePermissions(Set<PermissionCode> requested) {
@@ -99,6 +102,8 @@ public class Role {
         }
         permissions.clear();
         permissions.addAll(requested);
+        // 수정 기능만 단독 배정해 화면/API에 접근할 수 없는 역할이 저장되지 않게 한다.
+        requested.forEach(permission -> permissions.addAll(permission.getRequiredPermissions()));
     }
 }
 

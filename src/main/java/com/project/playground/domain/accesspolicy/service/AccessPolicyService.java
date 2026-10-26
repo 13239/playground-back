@@ -50,7 +50,7 @@ public class AccessPolicyService {
                     ? PermissionCode.ACCESS_POLICY_UPDATE : PermissionCode.ACCESS_EXEMPTION_UPDATE);
             var policy = policies.findById(1L).orElseThrow();
             if (policy.getVersion() != expected) throw new BusinessException(ErrorCode.AUTHORIZATION_CHANGED);
-            if (exemptions != null && exemptions.stream().anyMatch(code -> Role.SUPER_ADMIN.equals(code) || !roles.existsById(code))) {
+            if (exemptions != null && exemptions.stream().anyMatch(code -> Role.ROOT.equals(code) || !roles.existsById(code))) {
                 throw new BusinessException(ErrorCode.ACCESS_EXEMPTION_INVALID);
             }
             var before = snapshot(policy);

@@ -44,16 +44,16 @@ public class AccessPolicy {
     public Set<String> getExemptRoleCodes() { return Set.copyOf(exemptRoleCodes); }
     public Map<String, Long> getRevocations() { return Map.copyOf(revocations); }
 
-    /** SUPER_ADMIN은 설정 목록과 관계없이 허용한다. 새 제한은 이전 로그인을 영구 무효화한다. */
+    /** ROOT는 설정 목록과 관계없이 허용한다. 새 제한은 이전 로그인을 영구 무효화한다. */
     public void change(boolean enabled, String message, Set<String> exemptions, Collection<String> existingRoles) {
         this.enabled = enabled;
         this.message = message.strip();
         exemptRoleCodes.clear();
         exemptRoleCodes.addAll(exemptions);
-        exemptRoleCodes.remove(Role.SUPER_ADMIN);
+        exemptRoleCodes.remove(Role.ROOT);
         if (enabled) {
             long nextVersion = Math.incrementExact(version);
-            existingRoles.stream().filter(code -> !Role.SUPER_ADMIN.equals(code) && !exemptRoleCodes.contains(code))
+            existingRoles.stream().filter(code -> !Role.ROOT.equals(code) && !exemptRoleCodes.contains(code))
                     .forEach(code -> revocations.put(code, nextVersion));
         }
         // 동일 값 재적용도 별도 운영 명령이므로 부모 행을 갱신해 컬렉션과 같은 버전을 부여한다.

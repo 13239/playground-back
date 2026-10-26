@@ -12,7 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-/** 설정 스위치와 슈퍼 관리자 전용 예외 역할 변경을 별도 명령으로 제공한다. */
+/** 설정 스위치와 ROOT 전용 예외 역할 변경을 별도 명령으로 제공한다. */
 @RestController @RequestMapping("/api/admin/access-policy") @RequiredArgsConstructor
 public class AdminAccessPolicyController {
     private final AccessPolicyService policy;

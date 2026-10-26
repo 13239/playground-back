@@ -10,7 +10,8 @@ local function access_role(role, revision)
         or not policy[4] or policy[4] == '' then return -3 end
     if not role or not revision or string.len(revision) ~= 19 or not string.match(revision, '^%d+$') then return 0 end
     if revision > policy[2] then return -3 end
-    if role == 'SUPER_ADMIN' then return 1 end
+    -- DB의 현재 최상위 코드만 접속 제한에서 제외한다. 이전 코드 세션은 다시 로그인해야 한다.
+    if role == 'ROOT' then return 1 end
     if state ~= 'ready' then return -3 end
     if policy[3] == 'true'
         and redis.call('HGET', policyKey, 'allow:' .. role) ~= 'true' then return -2 end

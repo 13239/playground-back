@@ -13,7 +13,7 @@
 | GET `/api/admin/users/{id}/sensitive` | USER_READ + USER_SENSITIVE_READ | 별도 사유 입력 없이 열람 감사 저장 후 개인정보 원문 반환 |
 | PUT `/api/admin/users/{id}/status` | USER_READ + USER_STATUS_UPDATE | ACTIVE/INACTIVE 변경, 버전·사유·감사 기록 |
 | POST `/api/admin/users/{id}/sessions/revoke` | USER_READ + USER_SESSION_REVOKE | 계정 상태를 유지하고 기존 로그인 세션 종료 |
-| GET/PUT `/api/admin/users/{id}/role` | USER_ROLE_UPDATE (현재 SUPER_ADMIN 전용) | 기존 역할 배정 API 사용. UI는 검색 가능한 단일 역할 선택과 확인·사유 입력 제공 |
+| GET/PUT `/api/admin/users/{id}/role` | USER_ROLE_UPDATE (현재 ROOT 전용) | 기존 역할 배정 API 사용. UI는 검색 가능한 단일 역할 선택과 확인·사유 입력 제공 |
 
 조회 기본은 탈퇴 제외이며 `status=DELETED`를 명시하면 탈퇴 회원도 조회할 수 있다. 상태 필터는 ACTIVE/INACTIVE/PENDING/DELETED, 역할 필터는 임의의 등록 역할 코드다. 회원 목록과 닉네임 이력은 `page`(1부터, 기본 1)·`size`(10/20/30/50, 기본 10)를 받는다. 같은 필터의 집계와 해당 번호의 행만 조회하고 `page`, `size`, `totalPages`, `totalElements`를 반환한다. 범위를 벗어난 페이지는 실제 마지막 페이지로 보정하며 빈 목록도 1페이지다. 회원 집계에는 역할 조인을 하지 않는다. 검색의 %, _, !는 와일드카드로 취급하지 않는다. 기본 컬럼의 B-tree 인덱스를 활용하는 앞부분 검색과 3초 쿼리 제한을 사용한다. 역할 선택기 등 기존 다른 목록의 커서 계약은 유지한다.
 
@@ -37,7 +37,7 @@
 
 역할 정책 행 → 행위자 행 → 대상 행 순서의 잠금과 최신 기능 검사를 사용한다. 상태는 기존 `UserService`의 Redis 차단/폐기/커밋 후 조건부 해제를 재사용한다. DB 또는 감사가 실패하면 변경은 롤백되며 먼저 차단한 Redis는 보안을 위해 차단을 유지할 수 있다. 이 경우 최신 내용을 조회한 뒤 ACTIVE를 재적용하면 기존 재활성화 절차로 복구한다. 이미 종료한 세션은 다시 살아나지 않는다.
 
-일반 관리자는 SUPER_ADMIN의 세션을 종료할 수 없다. 최고 관리자의 상태·역할 변경은 거절하고, 본인의 비활성화도 Redis 부수 효과 전에 거절한다. SUPER_ADMIN은 자신의 모든 세션 종료를 명시적으로 실행할 수 있다. 탈퇴 복구·관리자 탈퇴 처리·가입대기 상태 생성은 이 단계에 추가하지 않는다.
+일반 관리자는 ROOT의 세션을 종료할 수 없다. 최고 관리자의 상태·역할 변경은 거절하고, 본인의 비활성화도 Redis 부수 효과 전에 거절한다. ROOT는 자신의 모든 세션 종료를 명시적으로 실행할 수 있다. 탈퇴 복구·관리자 탈퇴 처리·가입대기 상태 생성은 이 단계에 추가하지 않는다.
 
 역할 배정은 기존 `roleVersion`, 상태/세션 변경은 `managementVersion`을 사용한다. 개인정보 조회는 현재 읽은 버전을 감사에 남기며 열람 폼의 버전을 받지 않는다. `managementVersion`은 User의 JPA `@Version`으로 프로필·비밀번호·상태·역할 변경에도 증가해 오래된 편집을 구분한다. 충돌 409는 변경 요청을 자동 재전송하지 않으며 최신 정보를 다시 불러오게 한다. 기존 역할 API의 서버 사유 계약은 유지하되 UI에서는 사유를 필수로 입력한다.
 

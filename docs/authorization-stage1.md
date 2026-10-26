@@ -8,12 +8,12 @@
 
 Flyway V11은 다음을 추가한다. 기존 V1~V10 파일과 회원 자격 증명은 수정하지 않는다.
 
-- tbl_role: 역할 코드·이름·설명·기본 역할 여부·편집 버전.
+- tbl_role: 역할 코드·이름·설명·편집 버전. V11에서 만든 기본 역할 구분 컬럼은 [V28](role-deletion-policy.md)에서 제거한다.
 - tbl_permission: 기능 권한 사전.
 - tbl_role_permission: 역할별 허용 기능.
 - tbl_user.role_code: 기존 및 신규 회원의 기본값 USER.
 - tbl_user.role_version: 회원 역할 편집 충돌 방지.
-- tbl_user.super_admin_guard: SUPER_ADMIN 계정을 최대 한 명으로 제한하는 고유 생성 칼럼.
+- tbl_user.root_guard: ROOT 계정을 최대 한 명으로 제한하는 고유 생성 칼럼. V27에서 기존 `super_admin_guard`를 이전한다.
 - tbl_admin_audit_log: 권한 변경과 함께 저장하는 중요 작업 기록.
 
 DB 고유 제약은 최고 관리자 **최대 한 명**을 보장한다. 명시적인 초기 배정 후 계정 비활성화·소프트 삭제·일반 역할 변경을 서비스/엔티티에서 막아 한 명을 유지한다. 초기 설정 전에는 최고 관리자 계정이 없다.
@@ -41,15 +41,15 @@ AUTHORIZATION_BOOTSTRAP_USERNAME=admin
 
 ## 기본 역할과 확장
 
-- SUPER_ADMIN: 모든 구현된 관리 기능을 사용할 수 있다. 기능 매핑 편집 없이 전체 기능 권한을 얻는다.
+- ROOT: 모든 구현된 관리 기능을 사용할 수 있다. 기능 매핑 편집 없이 전체 기능 권한을 얻는다. V27에서 기존 `SUPER_ADMIN` 코드·회원 배정을 이전하며 [이름·순서·적용 절차](root-role-migration.md)를 따른다.
 - ADMIN: 일반 운영 기능을 허용하되 최고 관리자 전용 기능과 개인정보 상세 열람은 기본 허용하지 않는다.
 - MANAGER: 관리자 진입, 사용자 조회, 채팅 내역 조회.
 - USER: 관리자 기능 없음.
 - 추가 역할은 문자열 코드 데이터로 생성한다. 역할을 추가할 때 Java enum을 변경하지 않는다.
-- 기본 역할 삭제, SUPER_ADMIN 역할 편집, 유일 계정의 강등/삭제/비활성화는 허용하지 않는다.
-- 회원이 참조하는 역할은 삭제하지 않는다. 탈퇴 회원의 FK도 포함한다.
+- ROOT 코드로 역할 삭제·편집을 막고 유일 계정의 강등/삭제/비활성화도 허용하지 않는다. 다른 역할은 최초 제공 여부와 관계없이 미사용이면 삭제할 수 있다.
+- 회원이 참조하는 역할은 삭제하지 않는다. 탈퇴 회원의 FK도 포함한다. 접속 허용 설정과 신규 가입 기본값인 USER도 사용 중으로 판단하며 [사용처별 삭제 정책](role-deletion-policy.md)을 따른다.
 
-역할/권한 정책과 회원 역할 배정은 현재 SUPER_ADMIN 전용이다. 최고 관리자 전용 기능은 일반 역할에 배정할 수 없으며 DB 매핑이 잘못 추가되어도 권한 검사에서 제외한다.
+역할/권한 정책과 회원 역할 배정은 현재 ROOT 전용이다. 최고 관리자 전용 기능은 일반 역할에 배정할 수 없으며 DB 매핑이 잘못 추가되어도 권한 검사에서 제외한다.
 
 ## 보호 흐름
 
@@ -71,7 +71,8 @@ AUTHORIZATION_BOOTSTRAP_USERNAME=admin
 |---|---|---|
 | GET | /api/admin/me | 현재 관리자 역할·유효 기능·버전 |
 | GET | /api/admin/permissions | 구현된 기능 사전 |
-| GET | /api/admin/roles?query=&cursor=&limit=30 | 검색 가능한 역할 코드 커서 목록. 회원 수/전체 count 없음 |
+| GET | /api/admin/roles?query=&page=1&size=10 | 검색 가능한 역할 그리드. 페이지 번호·전체 페이지·전체 역할 수 반환 |
+| GET | /api/admin/roles/options?query=&cursor=&limit=30 | 운영 설정 선택기용 역할 코드 커서 목록. 회원 수/전체 count 없음 |
 | GET | /api/admin/roles/{code} | 선택한 역할의 현재 정보·기능·버전 |
 | POST | /api/admin/roles | 새 역할 생성 |
 | PUT | /api/admin/roles/{code} | 이름·설명·기능을 함께 수정 |
