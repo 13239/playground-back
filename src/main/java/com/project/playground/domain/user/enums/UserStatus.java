@@ -9,7 +9,8 @@ public enum UserStatus {
 
     ACTIVE("활성"),
     INACTIVE("비활성"),
-    PENDING("가입대기");
+    PENDING("가입대기"),
+    WITHDRAWN("탈퇴");
 
     private final String description;
 }

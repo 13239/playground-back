@@ -25,7 +25,8 @@ public final class AdminLogCatalog {
             "GAME", "게임", "GAME_MODE", "게임 모드", "GAME_GENRE", "장르");
     public static String action(String code) { return ACTIONS.getOrDefault(code, code); }
     public static String target(String code) { return TARGETS.getOrDefault(code, code); }
-    public static String activity(String code) { return switch (code) { case "LOGIN" -> "로그인"; case "SIGN_UP" -> "회원가입"; default -> code; }; }
+    // 본인 탈퇴 기록도 관리자 활동 목록과 필터에서 같은 문구로 표시한다.
+    public static String activity(String code) { return switch (code) { case "LOGIN" -> "로그인"; case "SIGN_UP" -> "회원가입"; case "WITHDRAWAL" -> "회원탈퇴"; default -> code; }; }
     public static String result(String code) { return switch (code) { case "SUCCESS" -> "성공"; case "FAILURE" -> "실패"; default -> code; }; }
     public static String failure(String code) {
         if (code == null) return null;

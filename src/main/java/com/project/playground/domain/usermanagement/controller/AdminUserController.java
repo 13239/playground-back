@@ -24,7 +24,7 @@ public class AdminUserController {
     @GetMapping @RequireAdminPermission(PermissionCode.USER_READ)
     public ResponseEntity<AdminUserPage> list(@AuthenticationPrincipal Session actor,
             @RequestParam(required = false) @Size(max = 100) String query,
-            @RequestParam(required = false) @Pattern(regexp = "ACTIVE|INACTIVE|PENDING|DELETED") String status,
+            @RequestParam(required = false) @Pattern(regexp = "ACTIVE|INACTIVE|PENDING|WITHDRAWN") String status,
             @RequestParam(required = false) @Pattern(regexp = "[A-Z][A-Z0-9_]{0,63}") String roleCode,
             @RequestParam(defaultValue = "1") @Positive int page,
             @RequestParam(defaultValue = "10") @Min(10) @Max(50) int size) {
@@ -35,7 +35,8 @@ public class AdminUserController {
     @GetMapping("/{userId}/nickname-history") @RequireAdminPermission(PermissionCode.USER_READ)
     public ResponseEntity<NicknameHistoryResponse> history(@AuthenticationPrincipal Session actor, @PathVariable @Positive Long userId,
             @RequestParam(defaultValue = "1") @Positive int page,
-            @RequestParam(defaultValue = "10") @Min(10) @Max(50) int size) { return response(users.history(actor.getId(), userId, page, size)); }
+            // 이력은 10개를 기본으로 최대 30개까지만 조회하며 세부 허용값은 서비스에서 검사한다.
+            @RequestParam(defaultValue = "10") @Min(10) @Max(30) int size) { return response(users.history(actor.getId(), userId, page, size)); }
     // 별도 사유 입력 없이 원문을 조회하되 기존 개인정보 기능 권한과 열람 감사는 유지한다.
     @GetMapping("/{userId}/sensitive") @RequireAdminPermission({PermissionCode.USER_READ, PermissionCode.USER_SENSITIVE_READ})
     public ResponseEntity<AdminUserSensitive> sensitive(@AuthenticationPrincipal Session actor, @PathVariable @Positive Long userId) { return response(users.sensitive(actor.getId(), userId)); }

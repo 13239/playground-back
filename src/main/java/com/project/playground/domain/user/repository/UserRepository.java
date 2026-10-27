@@ -18,6 +18,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByUsername(String username);
 
+    /** 삭제된 회원은 관리자 이력에서도 별도 복구·삭제 기능 없이 조회 대상에서 제외한다. */
+    boolean existsByIdAndDeletedAtIsNull(Long id);
+
     // 삭제된 회원의 FK도 남아 있으므로 역할 사용 여부는 전체 회원을 대상으로 확인한다.
     boolean existsByRoleCode(String roleCode);
 
@@ -29,9 +32,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
             + "and u.deletedAt is null")
     Optional<UserRoleView> findActiveRole(@Param("userId") Long userId);
 
-    /** 비활성 회원도 역할을 조회/정리할 수 있게 하되 탈퇴 회원과 인증 정보는 반환하지 않는다. */
+    /** 비활성 회원도 역할을 조회/정리할 수 있게 하되 탈퇴·삭제 회원과 인증 정보는 반환하지 않는다. */
     @Query("select u.id as userId, u.roleCode as roleCode, u.roleVersion as roleVersion from User u "
-            + "where u.id = :userId and u.deletedAt is null")
+            + "where u.id = :userId and u.deletedAt is null "
+            + "and u.status <> com.project.playground.domain.user.enums.UserStatus.WITHDRAWN")
     Optional<UserRoleView> findRoleForManagement(@Param("userId") Long userId);
 
     /** 최고 관리자 초기 배정과 계정 상태 변경이 같은 회원 행 잠금을 공유한다. */

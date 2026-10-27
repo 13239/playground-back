@@ -6,6 +6,7 @@ import com.project.playground.domain.game.service.GameUnavailableException;
 import com.project.playground.auth.ratelimit.LoginRateLimitException;
 import com.project.playground.auth.ratelimit.SignUpRateLimitException;
 import com.project.playground.auth.ratelimit.PasswordChangeRateLimitException;
+import com.project.playground.auth.ratelimit.AccountWithdrawalRateLimitException;
 import com.project.playground.domain.gomoku.service.RoomRateLimitException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.TransientDataAccessException;
@@ -23,6 +24,12 @@ import java.util.Objects;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 탈퇴 재시도도 공통 Retry-After 응답을 사용하며 원문 비밀번호나 내부 오류는 노출하지 않는다.
+    @ExceptionHandler(AccountWithdrawalRateLimitException.class)
+    public ResponseEntity<ProblemDetail> withdrawalRateLimit(AccountWithdrawalRateLimitException exception) {
+        return rateLimitResponse(exception.getErrorCode(), exception.getRetryAfterSeconds());
+    }
 
     // 게임 점검 안내는 인증 실패로 처리하지 않으며 관리자가 검증한 평문만 전달한다.
     @ExceptionHandler(GameUnavailableException.class)

@@ -9,6 +9,7 @@ import com.project.playground.domain.authorization.entity.Role;
 import com.project.playground.domain.authorization.enums.PermissionCode;
 import com.project.playground.domain.authorization.repository.RoleRepository;
 import com.project.playground.domain.user.repository.UserRepository;
+import com.project.playground.domain.user.enums.UserStatus;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -143,7 +144,9 @@ public class RoleManagementService {
     @Transactional
     public UserRoleResponse changeUserRole(Long actorId, Long userId, ChangeUserRoleRequest request) {
         var actor = authorization.requireSuperAdminForUpdate(actorId);
-        var user = users.findForUpdateById(userId).filter(value -> value.getDeletedAt() == null)
+        // 탈퇴 계정은 삭제 여부와 별개로 역할을 다시 배정하지 않는다.
+        var user = users.findForUpdateById(userId).filter(value -> value.getDeletedAt() == null
+                        && value.getStatus() != UserStatus.WITHDRAWN)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         requireVersion(user.getRoleVersion(), request.getExpectedVersion());
         findRole(request.getRoleCode());

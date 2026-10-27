@@ -107,7 +107,8 @@ public class UserService {
     public void deactivate(Long userId) {
         User user = findForUpdate(userId);
 
-        if (user.getDeletedAt() != null) {
+        // 탈퇴를 일반 비활성 상태로 덮어써 재활성화할 수 있는 계정으로 되돌리지 않는다.
+        if (user.getDeletedAt() != null || user.getStatus() == UserStatus.WITHDRAWN) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
@@ -115,6 +116,17 @@ public class UserService {
         user.assertNotSuperAdmin();
         redisSessionRepository.blockAndRevokeAll(userId);
         user.deactivate();
+    }
+
+    /** 탈퇴 상태 변경 전에 모든 세션과 신규 로그인을 차단한다. deletedAt은 삭제 전용으로 유지한다. */
+    @Transactional
+    public void withdraw(Long userId) {
+        User user = findForUpdate(userId);
+        if (user.getDeletedAt() != null) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        // 최고 관리자 보호는 Redis 부수 효과 전에 확인하며 재요청에도 차단·세션 정리를 수행한다.
+        user.assertNotSuperAdmin();
+        redisSessionRepository.blockAndRevokeAll(userId);
+        user.withdraw();
     }
 
     /**
@@ -140,7 +152,7 @@ public class UserService {
 
     /**
      * 비활성 또는 가입대기 계정을 재활성화한다.
-     * 삭제된 계정은 이 메서드로 복구할 수 없다.
+     * 탈퇴 또는 삭제된 계정은 이 메서드로 복구할 수 없다.
      * <p>
      * 1. 회원 행에 쓰기 잠금을 건다.
      * 2. Redis에 남은 세션을 다시 폐기하고 이번 상태 변경의 차단 표식을 저장한다.
@@ -157,7 +169,7 @@ public class UserService {
     public void activate(Long userId) {
         User user = findForUpdate(userId);
 
-        if (user.getDeletedAt() != null) {
+        if (user.getDeletedAt() != null || user.getStatus() == UserStatus.WITHDRAWN) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 

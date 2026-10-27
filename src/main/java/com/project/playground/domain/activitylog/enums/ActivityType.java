@@ -7,5 +7,8 @@ public enum ActivityType {
     LOGIN,
 
     // 회원가입
-    SIGN_UP
+    SIGN_UP,
+
+    // 현재 비밀번호 확인과 계정 탈퇴 상태 변경을 완료한 본인 요청
+    WITHDRAWAL
 }

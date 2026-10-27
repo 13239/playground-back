@@ -7,9 +7,11 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum ErrorCode {
+    // 본인 탈퇴의 비밀번호 대입·중복 제출은 계정별로 제한한다.
+    ACCOUNT_WITHDRAWAL_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "회원탈퇴 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     // 회원 운영의 버전 충돌과 본인 비활성화 금지를 인증 실패/재로그인과 구분한다.
     USER_MANAGEMENT_CHANGED(HttpStatus.CONFLICT, "회원 정보가 변경되었습니다. 최신 내용을 불러온 뒤 다시 시도해 주세요."),
-    USER_SELF_OPERATION_NOT_ALLOWED(HttpStatus.CONFLICT, "현재 로그인한 본인 계정은 비활성화할 수 없습니다."),
+    USER_SELF_OPERATION_NOT_ALLOWED(HttpStatus.CONFLICT, "현재 로그인한 본인 계정은 비활성화하거나 탈퇴 처리할 수 없습니다."),
     USER_MANAGEMENT_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원 관리 서비스를 일시적으로 이용할 수 없습니다."),
 
     // 요청 DTO 검증 및 JSON 역직렬화 오류

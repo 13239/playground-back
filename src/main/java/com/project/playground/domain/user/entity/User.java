@@ -107,6 +107,12 @@ public class User extends TimeEntity {
         this.status = UserStatus.INACTIVE;
     }
 
+    /** 탈퇴는 계정 상태만 변경하고 삭제 시각은 기록하지 않는다. 최고 관리자 보호도 유지한다. */
+    public void withdraw() {
+        assertNotSuperAdmin();
+        this.status = UserStatus.WITHDRAWN;
+    }
+
     /** Redis 차단 전에 호출하며 유일한 ROOT가 이용 불가 상태가 되는 것을 막는다. */
     public void assertNotSuperAdmin() {
         if (Role.ROOT.equals(roleCode)) throw new BusinessException(ErrorCode.ROLE_PROTECTED);

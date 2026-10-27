@@ -24,8 +24,9 @@ public class AdminUserQueryRepository {
             U.createdAt, U.updatedAt, U.managementVersion, U.roleVersion, R.code, R.name };
 
     public AdminUserPage list(String search, String status, String roleCode, int page, int size) {
-        var where = new BooleanBuilder(status != null && status.equals("DELETED") ? U.deletedAt.isNotNull() : U.deletedAt.isNull());
-        if (status != null && !status.equals("DELETED")) where.and(U.status.eq(UserStatus.valueOf(status)));
+        // 전체 상태에는 탈퇴도 포함하며 삭제 시각이 기록된 계정은 모든 상태 조회에서 제외한다.
+        var where = new BooleanBuilder(U.deletedAt.isNull());
+        if (status != null) where.and(U.status.eq(UserStatus.valueOf(status)));
         if (roleCode != null) where.and(U.roleCode.eq(roleCode));
         if (search != null && !search.isBlank()) {
             // 기본 B-tree 인덱스를 사용할 수 있는 앞부분 검색이다. %, _, !는 일반 문자로 취급한다.
@@ -45,13 +46,15 @@ public class AdminUserQueryRepository {
         return AdminUserPage.builder().items(items).page(actualPage).size(size).totalPages(totalPages).totalElements(total).build();
     }
     public AdminUserDetails details(long id) {
-        var row = base().where(U.id.eq(id)).fetchOne();
+        // 삭제된 계정은 ID를 직접 지정해도 회원 상세로 반환하지 않는다.
+        var row = base().where(U.id.eq(id), U.deletedAt.isNull()).fetchOne();
         if (row == null) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         return AdminUserDetails.builder().user(summary(row)).build();
     }
     public AdminUserSensitive sensitive(long id) {
         var row = query.select(U.id, U.email, U.phone, U.birthday, U.gender, U.managementVersion)
-                .from(U).where(U.id.eq(id), U.deletedAt.isNull()).fetchOne();
+                // 탈퇴·삭제 계정의 개인정보 원문 조회 제한은 상태 코드 분리 후에도 유지한다.
+                .from(U).where(U.id.eq(id), U.deletedAt.isNull(), U.status.ne(UserStatus.WITHDRAWN)).fetchOne();
         if (row == null) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         return AdminUserSensitive.builder().userId(row.get(U.id)).email(row.get(U.email)).phone(row.get(U.phone))
                 .birthday(row.get(U.birthday)).gender(row.get(U.gender)).managementVersion(row.get(U.managementVersion)).build();
