@@ -7,6 +7,12 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum ErrorCode {
+    // 친구 관계·그룹 참가의 동시 변경은 인증 오류와 구분한다.
+    SOCIAL_NOT_FOUND(HttpStatus.NOT_FOUND, "친구 또는 요청 정보를 찾을 수 없습니다."),
+    SOCIAL_CONFLICT(HttpStatus.CONFLICT, "상태가 변경되었거나 지금 처리할 수 없는 요청입니다. 새로 확인해 주세요."),
+    SOCIAL_ACCESS_DENIED(HttpStatus.FORBIDDEN, "현재 친구 또는 그룹 참가 권한이 없습니다."),
+    SOCIAL_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "친구 요청 또는 그룹 인원 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."),
+    SOCIAL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "친구 기능을 일시적으로 이용할 수 없습니다. 다시 시도해 주세요."),
     // 본인 탈퇴의 비밀번호 대입·중복 제출은 계정별로 제한한다.
     ACCOUNT_WITHDRAWAL_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "회원탈퇴 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     // 회원 운영의 버전 충돌과 본인 비활성화 금지를 인증 실패/재로그인과 구분한다.

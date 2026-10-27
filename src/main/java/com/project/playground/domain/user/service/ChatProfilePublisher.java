@@ -53,7 +53,8 @@ public class ChatProfilePublisher {
 
     private void publish(Long userId, UserProfileResponse profile, long revision) {
         Long result = redis.execute(PUBLISH, List.of(PREFIX + userId),
-                UUID.randomUUID().toString(), profile.getNickname(), profile.getAvatarId().name(), Long.toString(revision), CHANNEL);
+                UUID.randomUUID().toString(), profile.getNickname(), profile.getAvatarId().name(), Long.toString(revision), CHANNEL,
+                profile.getPublicUserId());
         if (result == null) throw new IllegalStateException("채팅 프로필 동기화를 확인하지 못했습니다.");
     }
 }

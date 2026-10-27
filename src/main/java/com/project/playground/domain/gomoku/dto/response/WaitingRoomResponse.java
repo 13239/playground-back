@@ -58,6 +58,7 @@ public class WaitingRoomResponse {
         var aggregate = stats.get(user.getId());
         return Participant.builder()
                 .seat(member.getSeat()).nickname(user.getNickname()).avatarId(user.getProfileAvatar())
+                .publicUserId(user.getPublicId())
                 .host(user.getId().equals(hostId)).self(user.getId().equals(viewer)).ready(member.isReady())
                 // 전적이 없는 회원은 0승 0패 0무로 표시하고 내부 회원 ID는 전송하지 않는다.
                 .wins(aggregate == null ? 0 : aggregate.getWins())
@@ -70,6 +71,8 @@ public class WaitingRoomResponse {
     public static class Participant {
         private final int seat;
         private final String nickname;
+        // 함께한 게임에서 공통 프로필 팝업을 열기 위한 공개 식별자다.
+        private final String publicUserId;
         private final ProfileAvatar avatarId;
         private final boolean host;
         private final boolean self;

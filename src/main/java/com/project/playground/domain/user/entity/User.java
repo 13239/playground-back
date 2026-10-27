@@ -27,6 +27,10 @@ public class User extends TimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 친구·게임·채팅은 변경 가능한 닉네임 대신 이 영속 공개 키로 같은 회원을 식별한다.
+    @Column(name = "public_id", nullable = false, length = 36, updatable = false, columnDefinition = "char(36)")
+    private String publicId = java.util.UUID.randomUUID().toString();
+
     @Column(nullable = false, length = 50)
     private String nickname;
 
