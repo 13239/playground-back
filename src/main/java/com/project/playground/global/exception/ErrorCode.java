@@ -7,6 +7,13 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum ErrorCode {
+
+    // 카드 게임의 충돌·제한은 인증 만료와 분리해 현재 판을 복구한다.
+    MEMORY_CHANGED(HttpStatus.CONFLICT, "카드 상태가 변경되었습니다. 현재 판을 확인해 주세요."),
+    MEMORY_RATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "게임 요청이 많습니다. 잠시 후 다시 시도해 주세요."),
+    MEMORY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "같은 그림 찾기를 일시적으로 이용할 수 없습니다."),
+    MEMORY_INVITATION_EXPIRED(HttpStatus.CONFLICT, "초대가 만료되었거나 방 상태가 변경되었습니다."),
+    MEMORY_INVITATION_BUSY(HttpStatus.CONFLICT, "이미 응답을 기다리는 초대가 있습니다."),
     // 친구 관계·그룹 참가의 동시 변경은 인증 오류와 구분한다.
     SOCIAL_NOT_FOUND(HttpStatus.NOT_FOUND, "친구 또는 요청 정보를 찾을 수 없습니다."),
     SOCIAL_CONFLICT(HttpStatus.CONFLICT, "상태가 변경되었거나 지금 처리할 수 없는 요청입니다. 새로 확인해 주세요."),

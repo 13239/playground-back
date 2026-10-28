@@ -115,6 +115,8 @@ public final class SocialDtos {
         private final String notificationBoundary;
         // 짧은 오목 초대는 일반 알림 읽음과 분리하고 서버 시각을 기준으로 남은 시간을 계산한다.
         private final List<com.project.playground.domain.gomoku.dto.response.GomokuInvitationResponse> gomokuInvitations;
+        // 게임 초대의 기한과 공개 프로필만 전달하며 정답·참여코드는 포함하지 않는다.
+        private final List<com.project.playground.domain.memory.MemoryDtos.Invitation> memoryInvitations;
         private final Instant serverTime;
     }
 }
