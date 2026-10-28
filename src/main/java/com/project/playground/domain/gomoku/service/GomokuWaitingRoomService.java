@@ -59,6 +59,16 @@ public class GomokuWaitingRoomService {
     // 나머지 조회·입장 충돌은 변경 전 실패하므로 예외를 이유로 만료 정리를 되돌리지 않는다.
     @Transactional(timeout = 5, isolation = Isolation.READ_COMMITTED, noRollbackFor = BusinessException.class)
     public WaitingRoomResponse join(Long userId, JoinRoomRequest request) {
+        return join(userId, request, false);
+    }
+
+    /** 외부 입장 API에는 노출하지 않는다. 초대 서비스가 수신자·기한·방장 참가를 검증한 트랜잭션에서만 호출한다. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public WaitingRoomResponse joinInvited(Long userId, Long roomId) {
+        return join(userId, JoinRoomRequest.builder().roomId(roomId).build(), true);
+    }
+
+    private WaitingRoomResponse join(Long userId, JoinRoomRequest request, boolean invited) {
         limits.join(userId);
         User user = activeUser(userId);
         Long roomId = request.getRoomId() != null ? request.getRoomId()
@@ -93,7 +103,8 @@ public class GomokuWaitingRoomService {
         cleanExpired(room, members, null);
         if (room.getStatus() == RoomStatus.CLOSED) throw failure(ErrorCode.ROOM_CLOSED);
         // 코드만으로 비공개 방의 비밀번호 검증을 건너뛰지 않는다.
-        if (room.getVisibility() == RoomVisibility.PRIVATE) {
+        // 본인에게 발급된 유효한 친구 초대 수락만 비밀번호 대신 명시적인 입장 권한으로 인정한다.
+        if (!invited && room.getVisibility() == RoomVisibility.PRIVATE) {
             if (request.getPassword() == null || request.getPassword().isEmpty()) throw failure(ErrorCode.ROOM_PASSWORD_REQUIRED);
             if (!passwords.matches(request.getPassword(), room.getPasswordHash())) throw failure(ErrorCode.ROOM_PASSWORD_INVALID);
         }

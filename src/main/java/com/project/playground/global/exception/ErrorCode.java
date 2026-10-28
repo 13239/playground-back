@@ -111,6 +111,13 @@ public enum ErrorCode {
     ROOM_SETTINGS_FORBIDDEN(HttpStatus.FORBIDDEN, "방 설정은 현재 방장만 변경할 수 있습니다."),
     ROOM_SETTINGS_CHANGED(HttpStatus.CONFLICT, "방 상태가 변경되었습니다. 최신 설정을 확인한 뒤 다시 저장해 주세요."),
 
+    // 친구 초대는 현재 방장의 페이지와 본인에게 온 15초 초대만 허용한다.
+    GOMOKU_INVITATION_FORBIDDEN(HttpStatus.FORBIDDEN, "친구 초대는 대기 중인 방장의 현재 화면에서만 보낼 수 있습니다."),
+    GOMOKU_INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "확인할 수 없는 오목 초대입니다."),
+    GOMOKU_INVITATION_EXPIRED(HttpStatus.CONFLICT, "초대 시간이 지났습니다. 다시 초대해 주세요."),
+    GOMOKU_INVITATION_BUSY(HttpStatus.CONFLICT, "이미 응답을 기다리는 초대가 있습니다. 잠시 후 다시 초대해 주세요."),
+    GOMOKU_INVITATION_TARGET_UNAVAILABLE(HttpStatus.CONFLICT, "지금은 이 친구를 초대할 수 없습니다. 접속·참가 상태를 확인해 주세요."),
+
     // 대국의 늦은 명령과 금수를 구분해 정상 로그인이나 진행 중인 판을 폐기하지 않는다.
     GAME_STATE_CHANGED(HttpStatus.CONFLICT, "대국 상태가 변경되었습니다. 현재 판을 확인하고 다시 시도해 주세요."),
     GAME_NOT_YOUR_TURN(HttpStatus.CONFLICT, "상대의 차례입니다."),

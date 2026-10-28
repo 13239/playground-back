@@ -18,6 +18,8 @@ public class SocialService {
     private final SocialRepository repository;
     private final SocialProjector projector;
     private final StringRedisTemplate redis;
+    private final com.project.playground.domain.gomoku.service.GomokuInvitationService gomokuInvitations;
+    private final java.time.Clock gomokuClock;
     private static final long FOREVER=Long.MAX_VALUE;
     private static BusinessException denied(){return new BusinessException(ErrorCode.SOCIAL_ACCESS_DENIED);}
     private static BusinessException conflict(){return new BusinessException(ErrorCode.SOCIAL_CONFLICT);}
@@ -62,7 +64,8 @@ public class SocialService {
             .received(repository.requests(me,false,page(c.getRequestPage()))).sent(repository.requests(me,true,page(c.getSentPage())))
             .rooms(Page.of(repository.roomIds(me,rp).stream().map(id->roomView(me,id)).toList(),repository.roomCount(me),rp))
             .notifications(repository.notifications(me,page(c.getNotificationPage()))).unreadNotifications(repository.unread(me))
-            .notificationBoundary(repository.boundary(me)).invitations(repository.invitations(me,Instant.now())).build();
+            .notificationBoundary(repository.boundary(me)).invitations(repository.invitations(me,Instant.now()))
+            .gomokuInvitations(gomokuInvitations.visible(me)).serverTime(gomokuClock.instant()).build();
     }
     @Transactional(readOnly=true)
     public Person profile(long me,String id) {
@@ -100,8 +103,9 @@ public class SocialService {
             case "group-invite" -> invite(me,c);
             case "invitation-accept","invitation-reject","invitation-cancel" -> resolveInvite(me,action,c.getInvitationId());
             case "room-leave","room-kick","room-rename","room-mute" -> manage(me,action,c);
-            case "notification-read" -> {repository.markRead(me,uuid(c.getNotificationId()),Instant.now());changed(List.of(me),List.of());yield Map.of("ok",true);}
-            case "notifications-read" -> {if(c.getBeforeId()!=null)repository.markAll(me,uuid(c.getBeforeId()),Instant.now());changed(List.of(me),List.of());yield Map.of("ok",true);}
+            // 다른 탭에서도 읽음 수는 갱신하되 이미 읽은 알림의 재요청은 방송하지 않는다.
+            case "notification-read" -> {if(repository.markRead(me,uuid(c.getNotificationId()),Instant.now())>0)changed(List.of(me),List.of());yield Map.of("ok",true);}
+            case "notifications-read" -> {if(c.getBeforeId()!=null&&repository.markAll(me,uuid(c.getBeforeId()),Instant.now())>0)changed(List.of(me),List.of());yield Map.of("ok",true);}
             default -> throw new BusinessException(ErrorCode.INVALID_REQUEST_BODY);
         };
     }

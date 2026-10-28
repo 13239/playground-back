@@ -16,6 +16,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByIdAndStatusAndDeletedAtIsNull(Long id, UserStatus status);
 
+    /** 공개 프로필 키로 내부 잠금 대상을 찾되 잠금 전에 회원 엔티티 상태를 캐시하지 않는다. */
+    @Query("select u.id from User u where u.publicId = :publicId and u.status = com.project.playground.domain.user.enums.UserStatus.ACTIVE and u.deletedAt is null")
+    Optional<Long> findActiveIdByPublicId(String publicId);
+
     boolean existsByUsername(String username);
 
     /** 삭제된 회원은 관리자 이력에서도 별도 복구·삭제 기능 없이 조회 대상에서 제외한다. */

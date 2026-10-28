@@ -40,6 +40,9 @@ public class RoomRateLimitService {
     // 착수·추첨·무르기와 스트림 연결은 조회 예산과 분리한다.
     public void game(Long userId) { acquire(userId, "game", 120, 60_000); }
     public void events(Long userId) { acquire(userId, "events", 30, 60_000); }
+    // 초대 발송과 응답은 분리해 반복 발송이 수신자의 정상 수락·거절을 막지 않게 한다.
+    public void invitation(Long userId) { acquire(userId, "invitation", 10, 60_000); }
+    public void invitationReply(Long userId) { acquire(userId, "invitation-reply", 30, 60_000); }
 
     private void acquire(Long userId, String operation, int limit, long windowMillis) {
         try {

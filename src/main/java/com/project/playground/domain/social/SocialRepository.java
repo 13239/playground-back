@@ -106,11 +106,12 @@ class SocialRepository {
     }
     long unread(long id) { return count("SELECT COUNT(*) FROM tbl_social_notification WHERE user_id=? AND read_at IS NULL",id); }
     String boundary(long id) { return first(list("SELECT public_id FROM tbl_social_notification WHERE user_id=? ORDER BY id DESC LIMIT 1",(r,n)->r.getString(1),id)); }
-    void markRead(long user,String id,Instant now) { update("UPDATE tbl_social_notification SET read_at=COALESCE(read_at,?) WHERE user_id=? AND public_id=?",now,user,id); }
-    void markAll(long user,String boundary,Instant now) {
+    // 실제로 바뀐 행 수를 반환해 중복 읽음 요청이 실시간 갱신을 다시 발생시키지 않게 한다.
+    int markRead(long user,String id,Instant now) { return update("UPDATE tbl_social_notification SET read_at=? WHERE user_id=? AND public_id=? AND read_at IS NULL",now,user,id); }
+    int markAll(long user,String boundary,Instant now) {
         // 공개 UUID로 받은 경계를 본인의 내부 순서로 다시 조회하여 동시 도착 알림은 읽음 처리하지 않는다.
         var ids=list("SELECT id FROM tbl_social_notification WHERE user_id=? AND public_id=?",(r,n)->r.getLong(1),user,boundary);
-        if(!ids.isEmpty()) update("UPDATE tbl_social_notification SET read_at=? WHERE user_id=? AND id<=? AND read_at IS NULL",now,user,ids.getFirst());
+        return ids.isEmpty()?0:update("UPDATE tbl_social_notification SET read_at=? WHERE user_id=? AND id<=? AND read_at IS NULL",now,user,ids.getFirst());
     }
     void resolvedNotifications(String target,Instant now) { update("UPDATE tbl_social_notification SET read_at=COALESCE(read_at,?) WHERE target_id=?",now,target); }
     void outboxRoom(String id) { update("INSERT INTO tbl_social_outbox(room_id) VALUES(?)",id); }

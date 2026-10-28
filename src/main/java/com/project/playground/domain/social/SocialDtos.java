@@ -113,6 +113,9 @@ public final class SocialDtos {
         private final List<Invitation> invitations;
         private final long unreadNotifications;
         private final String notificationBoundary;
+        // 짧은 오목 초대는 일반 알림 읽음과 분리하고 서버 시각을 기준으로 남은 시간을 계산한다.
+        private final List<com.project.playground.domain.gomoku.dto.response.GomokuInvitationResponse> gomokuInvitations;
+        private final Instant serverTime;
     }
 }
 

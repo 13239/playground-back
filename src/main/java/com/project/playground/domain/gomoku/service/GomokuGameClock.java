@@ -2,6 +2,7 @@ package com.project.playground.domain.gomoku.service;
 
 import com.project.playground.domain.gomoku.repository.GomokuMatchRepository;
 import com.project.playground.domain.gomoku.repository.GomokuRoomParticipantRepository;
+import com.project.playground.domain.gomoku.repository.GomokuRoomInvitationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -24,12 +25,14 @@ import java.util.ArrayList;
 import java.util.PriorityQueue;
 
 /** 브라우저가 멈춰도 서버가 패스·추첨 마감·접속 종료를 반영한다. 여러 서버의 실행은 방 잠금으로 합쳐진다.
- * 활성 판·페이지 종료의 마감만 메모리에 예약해 빈 대국·참가 테이블을 매초 조회하지 않는다. */
+ * 활성 판·페이지 종료·친구 초대의 마감만 메모리에 예약해 빈 대국·참가·초대 테이블을 매초 조회하지 않는다. */
 @Component @RequiredArgsConstructor @Slf4j
 public class GomokuGameClock implements MessageListener, SubscriptionListener {
     private final GomokuMatchRepository matches;
     private final GomokuRoomParticipantRepository participants;
     private final GomokuWaitingRoomService waiting;
+    private final GomokuRoomInvitationRepository invitations;
+    private final GomokuInvitationService invitationService;
     private final Clock gomokuClock;
     // 다음 마감만 우선순위 큐에서 조회한다. 활성 방 수가 증가해도 매초 전체 방을 순회하지 않는다.
     private final Object scheduleLock = new Object();
@@ -57,6 +60,15 @@ public class GomokuGameClock implements MessageListener, SubscriptionListener {
         while (true) {
             var batch = participants.findDepartingAfter(afterId, PageRequest.of(0, 100));
             batch.forEach(participant -> schedule(participant.getRoom().getId(), participant.getExitDeadline()));
+            if (batch.size() < 100) break;
+            afterId = batch.getLast().getId();
+        }
+        // 15초 친구 초대도 같은 예약·Redis 재구독 복구를 사용하며 평상시 초대 테이블을 폴링하지 않는다.
+        afterId = 0;
+        while (true) {
+            var batch = invitations.findPendingAfter(com.project.playground.domain.gomoku.entity.GomokuRoomInvitation.State.PENDING,
+                    afterId, PageRequest.of(0, 100));
+            batch.forEach(invitation -> schedule(invitation.getRoom().getId(), invitation.getExpiresAt()));
             if (batch.size() < 100) return;
             afterId = batch.getLast().getId();
         }
@@ -111,6 +123,9 @@ public class GomokuGameClock implements MessageListener, SubscriptionListener {
         for (Long roomId : due) {
             try {
                 Instant next = waiting.tick(roomId);
+                // 대국·페이지 종료와 초대 기한 중 가장 이른 마감만 다시 예약한다.
+                Instant invitationDeadline = invitationService.tick(roomId);
+                if (invitationDeadline != null && (next == null || invitationDeadline.isBefore(next))) next = invitationDeadline;
                 if (next != null) schedule(roomId, next);
             } catch (RuntimeException exception) {
                 // 한 방의 장애는 나머지 예약을 막지 않는다. 실패한 방만 재시도하며 빈 테이블을 조회하지 않는다.
