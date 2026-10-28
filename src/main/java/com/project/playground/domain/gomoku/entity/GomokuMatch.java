@@ -62,7 +62,8 @@ public class GomokuMatch {
         match.blackCard = blackCard; match.blackSeat = assignedBlack;
         match.seenOne = now; match.seenTwo = now;
         match.phase = assignedBlack == 0 ? Phase.DRAWING : Phase.REVEAL;
-        match.deadline = now.plusSeconds(assignedBlack == 0 ? 20 : 3);
+        // 제비 선택은 10초 안에 마치고, 흑이 이미 정해진 공개 구간은 3초만 둔다.
+        match.deadline = now.plusSeconds(assignedBlack == 0 ? 10 : 3);
         return match;
     }
 
