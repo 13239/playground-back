@@ -93,6 +93,8 @@ public class AdminLogDetailMapper {
     }
     private static Map<String, String> fields() {
         String[] entries = { "code", "코드", "name", "이름", "description", "설명", "summary", "요약", "permissions", "기능 권한",
+                // 로그인 제한과 별개로 켜고 끈 가입 제한도 감사 상세에서 확인한다.
+                "signUpRestricted", "회원가입 제한",
                 "enabled", "사용 여부", "message", "안내 문구", "exemptRoleCodes", "접속 허용 권한", "published", "목록 공개",
                 "availability", "이용 상태", "thumbnailKey", "썸네일", "genres", "장르", "minHumanPlayers", "최소 참가 인원",
                 // 기존 개별 순서 변경 이력은 보존하고 새로운 일괄 순서 저장도 명시적으로 표시한다.

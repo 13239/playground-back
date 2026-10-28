@@ -21,6 +21,9 @@ public class AccessPolicy {
     private Long id;
     @Column(nullable = false)
     private boolean enabled;
+    // 회원가입 제한은 로그인 허용 역할·기존 세션 폐기와 독립적으로 저장한다.
+    @Column(name = "sign_up_restricted", nullable = false)
+    private boolean signUpRestricted;
     @Column(nullable = false, length = 300)
     private String message;
     @Version
@@ -44,10 +47,16 @@ public class AccessPolicy {
     public Set<String> getExemptRoleCodes() { return Set.copyOf(exemptRoleCodes); }
     public Map<String, Long> getRevocations() { return Map.copyOf(revocations); }
 
+    /** 가입 제한 변경도 동일한 정책 버전과 감사 기록 안에서 저장한다. */
+    public void changeSignUpRestriction(boolean restricted) {
+        signUpRestricted = restricted;
+    }
+
     /** ROOT는 설정 목록과 관계없이 허용한다. 새 제한은 이전 로그인을 영구 무효화한다. */
     public void change(boolean enabled, String message, Set<String> exemptions, Collection<String> existingRoles) {
         this.enabled = enabled;
-        this.message = message.strip();
+        // 저장한 안내를 로그인 확인창에 그대로 전달하도록 앞뒤 공백도 변경하지 않는다.
+        this.message = message;
         exemptRoleCodes.clear();
         exemptRoleCodes.addAll(exemptions);
         exemptRoleCodes.remove(Role.ROOT);

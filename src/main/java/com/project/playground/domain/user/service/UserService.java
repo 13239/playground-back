@@ -1,6 +1,7 @@
 package com.project.playground.domain.user.service;
 
 import com.project.playground.auth.repository.RedisSessionRepository;
+import com.project.playground.domain.accesspolicy.service.AccessPolicyAdmissionService;
 import com.project.playground.domain.activitylog.enums.ActivityType;
 import com.project.playground.domain.activitylog.service.ActivityLogger;
 import com.project.playground.domain.user.dto.request.SignUpRequest;
@@ -39,9 +40,12 @@ public class UserService {
 
     // 가입 성공은 커밋 후, 실패는 롤백 후 저장되도록 활동 로그 리스너가 시점을 맞춘다.
     private final ActivityLogger activityLogger;
+    private final AccessPolicyAdmissionService accessPolicy;
 
     @Transactional
     public void signUp(SignUpRequest request) {
+        // 화면을 우회한 가입도 차단하며 제한 중에는 중복 조회·비밀번호 해시 비용을 발생시키지 않는다.
+        accessPolicy.requireSignUpAllowed();
         if (userReader.existsByUsername(request.getUsername())) {
             throw duplicateUsername(request);
         }

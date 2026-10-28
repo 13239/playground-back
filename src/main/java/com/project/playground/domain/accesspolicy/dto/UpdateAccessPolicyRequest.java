@@ -9,6 +9,8 @@ import lombok.extern.jackson.Jacksonized;
 @Getter @Builder @Jacksonized
 public class UpdateAccessPolicyRequest {
     @NotNull private final Boolean enabled;
+    // 차단 문구는 로그인에만 사용하며 가입 제한은 고정 안내를 사용한다.
+    @NotNull private final Boolean signUpRestricted;
     @NotBlank @Size(max = 300)
     @Pattern(regexp = "[^\\p{Cc}\\p{Cf}]*", message = "안내 문구에는 제어 문자를 사용할 수 없습니다.")
     private final String message;

@@ -26,6 +26,8 @@ public enum ErrorCode {
 
     // 회원 관련 비즈니스 오류
     DUPLICATE_USERNAME(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다."),
+    // 운영상 가입 중단은 인증 만료·요청 횟수 제한과 별도 고정 안내를 제공한다.
+    SIGN_UP_RESTRICTED(HttpStatus.FORBIDDEN, "현재 회원가입이 제한되어 있습니다. 잠시 후 다시 시도해 주세요."),
     // 가입 요청 예산은 로그인 시도·계정 잠금과 별도로 관리한다.
     SIGN_UP_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "회원가입 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     SIGN_UP_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "회원가입 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),

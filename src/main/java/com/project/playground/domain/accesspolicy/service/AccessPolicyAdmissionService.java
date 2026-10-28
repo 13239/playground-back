@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 /** 비밀번호 검증 이후의 짧은 발급 구간만 공유 잠금으로 보호하여 여러 계정의 로그인을 병렬 처리한다. */
 @Service @RequiredArgsConstructor
@@ -21,6 +22,14 @@ public class AccessPolicyAdmissionService {
     private final UserRepository users;
     private final AccessPolicyRepository policies;
     private final RedisSessionRepository sessions;
+
+    /** 가입 완료까지 정책 편집과 순서를 맞춰 제한 저장 후 뒤늦게 신규 회원이 생성되지 않게 한다. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireSignUpAllowed() {
+        roles.lockAuthorizationPolicyForAdmission().orElseThrow();
+        var policy = policies.findById(1L).orElseThrow();
+        if (policy.isSignUpRestricted()) throw new BusinessException(ErrorCode.SIGN_UP_RESTRICTED);
+    }
 
     @Transactional
     public String create(RedisSession session, @Nullable LoginSessionReplacement replacement, String encryptedResult, boolean replace,

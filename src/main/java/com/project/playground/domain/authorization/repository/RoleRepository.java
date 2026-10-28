@@ -47,4 +47,13 @@ public interface RoleRepository extends JpaRepository<Role, String> {
     // 한글 검색의 집계에도 UTF-8 이름만 사용하며 기능 컬렉션은 조회하지 않는다.
     @Query("select r from Role r where lower(r.name) like :search escape '!' order by r.sortOrder, r.code")
     Page<Role> searchNamePage(@Param("search") String search, Pageable pageable);
+
+    // 접속 예외 선택기는 ROOT를 DB에서 제외해 페이지 개수와 실제 표시 행 수를 일치시킨다.
+    @Query("select r from Role r where r.code <> 'ROOT' and (:search is null or lower(r.code) like :search escape '!' "
+            + "or lower(r.name) like :search escape '!') order by r.sortOrder, r.code")
+    Page<Role> searchAccessPage(@Param("search") String search, Pageable pageable);
+
+    // ASCII 코드 컬럼은 한글 검색에서 비교하지 않는다.
+    @Query("select r from Role r where r.code <> 'ROOT' and lower(r.name) like :search escape '!' order by r.sortOrder, r.code")
+    Page<Role> searchAccessNamePage(@Param("search") String search, Pageable pageable);
 }
