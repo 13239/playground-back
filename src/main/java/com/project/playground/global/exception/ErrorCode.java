@@ -134,6 +134,20 @@ public enum ErrorCode {
     GAME_FORBIDDEN_MOVE(HttpStatus.CONFLICT, "흑돌의 3·3, 4·4, 장목 금수에는 착수할 수 없습니다."),
     GAME_UNDO_UNAVAILABLE(HttpStatus.CONFLICT, "현재 무르기를 요청하거나 응답할 수 없습니다."),
 
+    // 공통 초대는 로그인 만료와 분리해 해당 카드에서 복구하도록 안내한다.
+    GAME_INVITATION_EXPIRED(HttpStatus.CONFLICT, "초대가 만료되었거나 방 상태가 변경되었습니다. 다시 초대해 주세요."),
+    GAME_INVITATION_BUSY(HttpStatus.CONFLICT, "이미 응답을 기다리는 초대가 있습니다."),
+    GAME_INVITATION_TARGET_UNAVAILABLE(HttpStatus.CONFLICT, "지금은 이 친구를 초대할 수 없습니다. 접속·참가 상태를 확인해 주세요."),
+    GAME_INVITATION_RATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "초대 요청이 많습니다. 잠시 후 다시 시도해 주세요."),
+
+    // 슈팅 게임의 접속·기록 오류는 로그인 만료와 분리해 전용 화면에서 안내한다.
+    SHOOTING_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "슈팅 게임 서버를 일시적으로 이용할 수 없습니다."),
+    SHOOTING_TICKET_INVALID(HttpStatus.UNAUTHORIZED, "게임 접속 증명이 만료되었습니다. 다시 입장해 주세요."),
+    SHOOTING_ALREADY_PLAYING(HttpStatus.CONFLICT, "이미 다른 화면에서 슈팅 게임을 이용하고 있습니다."),
+    SHOOTING_RATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "게임 요청이 많습니다. 잠시 후 다시 시도해 주세요."),
+    SHOOTING_RECORD_INVALID(HttpStatus.CONFLICT, "게임 기록의 순서를 확인하지 못했습니다."),
+    SHOOTING_SERVICE_AUTH_REQUIRED(HttpStatus.FORBIDDEN, "허용되지 않은 게임 서버 연결입니다."),
+
     // 로그인 및 세션 관련 비즈니스 오류
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."),

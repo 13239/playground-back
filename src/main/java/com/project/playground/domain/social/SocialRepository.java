@@ -46,6 +46,16 @@ class SocialRepository {
         .requestedAt(r.getTimestamp("requested_at").toInstant()).resolvedAt(r.getTimestamp("resolved_at")==null?null:r.getTimestamp("resolved_at").toInstant()).build();
     boolean blocked(long a,long b) { return count("SELECT COUNT(*) FROM tbl_social_block WHERE (user_id=? AND target_id=?) OR (user_id=? AND target_id=?)",a,b,b,a)>0; }
     boolean blocks(long a,long b) { return count("SELECT COUNT(*) FROM tbl_social_block WHERE user_id=? AND target_id=?",a,b)>0; }
+    /** 실제 친구·활성 회원·양방향 차단을 같은 조회에서 확인한다. 후보는 서버의 대기실 목록에서만 받는다. */
+    Set<Long> friendIds(long me, Collection<Long> candidates) {
+        return new HashSet<>(jdbc.sql("""
+            SELECT u.id FROM tbl_social_friend f
+            JOIN tbl_user u ON u.id=CASE WHEN f.first_user_id=:me THEN f.second_user_id ELSE f.first_user_id END
+            WHERE f.state='ACCEPTED' AND (f.first_user_id=:me OR f.second_user_id=:me)
+            AND u.id IN (:candidates) AND u.deleted_at IS NULL AND u.status='ACTIVE'
+            AND NOT EXISTS(SELECT 1 FROM tbl_social_block b WHERE (b.user_id=:me AND b.target_id=u.id) OR (b.user_id=u.id AND b.target_id=:me))
+            """).param("me", me).param("candidates", candidates).query(Long.class).list());
+    }
     List<Long> blockedAuthors(long user) { return list("SELECT target_id FROM tbl_social_block WHERE user_id=?",(r,n)->r.getLong(1),user); }
     void request(long a,long b,String id,Instant now) {
         update("INSERT INTO tbl_social_friend(first_user_id,second_user_id,request_id,requester_id,state,requested_at) VALUES(?,?,?,?,'PENDING',?) ON DUPLICATE KEY UPDATE request_id=?,requester_id=?,state='PENDING',requested_at=?,resolved_at=NULL",

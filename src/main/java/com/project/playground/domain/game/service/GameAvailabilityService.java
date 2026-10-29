@@ -16,6 +16,17 @@ public class GameAvailabilityService {
     private final GameModeRepository modes;
     private final GameModuleRegistry modules;
 
+    /** 초대 표시에는 읽기 전용 정책 조회만 사용한다. 실제 입장은 requireNewPlay에서 다시 잠금 검증한다. */
+    @Transactional(readOnly = true)
+    public boolean canStart(String gameCode, String modeCode) {
+        var game = games.findByCode(gameCode)
+                .filter(value -> value.isPublished() && value.getAvailability() == GameAvailability.AVAILABLE)
+                .orElse(null);
+        return game != null && modes.findByGameIdAndCode(game.getId(), modeCode)
+                .filter(value -> value.isPublished() && value.getAvailability() == GameAvailability.AVAILABLE)
+                .filter(value -> modules.supports(gameCode, value)).isPresent();
+    }
+
     @Transactional
     public GameModeResponse requireNewPlay(String gameCode, String modeCode) {
         var game = games.findForPlay(gameCode).filter(value -> value.isPublished())

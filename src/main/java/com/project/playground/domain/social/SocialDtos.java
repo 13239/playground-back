@@ -117,6 +117,8 @@ public final class SocialDtos {
         private final List<com.project.playground.domain.gomoku.dto.response.GomokuInvitationResponse> gomokuInvitations;
         // 게임 초대의 기한과 공개 프로필만 전달하며 정답·참여코드는 포함하지 않는다.
         private final List<com.project.playground.domain.memory.MemoryDtos.Invitation> memoryInvitations;
+        // 게임별 입장 조건은 어댑터가 검증하며 화면은 공통 초대 카드로 표시한다.
+        private final List<com.project.playground.domain.gameinvite.GameInvitationDtos.Invitation> gameInvitations;
         private final Instant serverTime;
     }
 }

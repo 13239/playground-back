@@ -21,6 +21,8 @@ public class SocialService {
     private final com.project.playground.domain.gomoku.service.GomokuInvitationService gomokuInvitations;
     // 같은 그림 찾기도 기존 본인 전용 소셜 갱신·실시간 알림을 공유한다.
     private final com.project.playground.domain.memory.MemoryInvitationService memoryInvitations;
+    // 신규 게임도 같은 본인 전용 변경 방송과 공통 초대 기한을 사용한다.
+    private final com.project.playground.domain.gameinvite.GameInvitationService gameInvitations;
     private final java.time.Clock gomokuClock;
     private static final long FOREVER=Long.MAX_VALUE;
     private static BusinessException denied(){return new BusinessException(ErrorCode.SOCIAL_ACCESS_DENIED);}
@@ -67,7 +69,8 @@ public class SocialService {
             .rooms(Page.of(repository.roomIds(me,rp).stream().map(id->roomView(me,id)).toList(),repository.roomCount(me),rp))
             .notifications(repository.notifications(me,page(c.getNotificationPage()))).unreadNotifications(repository.unread(me))
             .notificationBoundary(repository.boundary(me)).invitations(repository.invitations(me,Instant.now()))
-            .gomokuInvitations(gomokuInvitations.visible(me)).memoryInvitations(memoryInvitations.visible(me)).serverTime(gomokuClock.instant()).build();
+            .gomokuInvitations(gomokuInvitations.visible(me)).memoryInvitations(memoryInvitations.visible(me))
+            .gameInvitations(gameInvitations.visible(me)).serverTime(gomokuClock.instant()).build();
     }
     @Transactional(readOnly=true)
     public Person profile(long me,String id) {
