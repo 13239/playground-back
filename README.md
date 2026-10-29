@@ -54,7 +54,7 @@ DB 변경은 Flyway가 서버 시작 시 적용하고 Hibernate는 결과를 검
 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
 ```
 
-`local` 프로필은 Spring을 `127.0.0.1`에 바인딩하고 실제 루프백 연결에만 mTLS 개발 예외를 허용한다. 브라우저 키 검증은 개발에서도 생략하지 않는다. BFF는 `http://localhost:9080`, 공개 Origin은 `http://localhost:3000`을 사용한다. 포트·공개 Origin을 바꾸면 양쪽 설정을 함께 변경한다.
+`local` 프로필은 Spring을 `127.0.0.1`에 바인딩하고 실제 루프백 연결에만 mTLS 개발 예외를 허용한다. 브라우저 키 검증은 개발에서도 생략하지 않는다. BFF는 `http://localhost:8080`, 공개 Origin은 `http://localhost:3000`을 사용한다. 포트·공개 Origin을 바꾸면 양쪽 설정을 함께 변경한다. Node.js 게임 서버는 `game/playground`의 8082 포트에서 실행하며 설정은 [통합 로컬 실행 안내](../../docs/local-development.md)를 따른다.
 
 ## Flyway 스키마 관리
 

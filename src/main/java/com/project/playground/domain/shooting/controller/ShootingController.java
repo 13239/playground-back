@@ -3,6 +3,8 @@ package com.project.playground.domain.shooting.controller;
 import com.project.playground.domain.shooting.dto.*;
 import com.project.playground.domain.shooting.service.ShootingService;
 import com.project.playground.domain.shooting.service.ShootingLobbyService;
+import com.project.playground.domain.shooting.service.ShootingLobbyEvents;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.project.playground.global.security.session.Session;
 
 import jakarta.validation.Valid;
@@ -20,6 +22,13 @@ import org.springframework.web.bind.annotation.*;
 public class ShootingController {
     private final ShootingService shooting;
     private final ShootingLobbyService lobby;
+    private final ShootingLobbyEvents events;
+
+    /** 목록의 데이터 대신 변경 신호만 보내고 조회 시 기존 세션·친구 필터를 다시 확인한다. */
+    @PostMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter events(@AuthenticationPrincipal(errorOnInvalidType = true) Session session) {
+        return events.subscribe(session.getId(), session.getSessionId());
+    }
 
     /** 목록은 실제 대기실 임대와 친구 관계를 확인한 공개 정보만 제공한다. */
     @PostMapping("/rooms")

@@ -27,11 +27,18 @@ public class ShootingLobbyService implements GameInvitationAdapter {
     private static final String INDEX="shooting:lobby:index";
     private static final RedisScript<Long> RATE=RedisScript.of("local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],60) end; return n",Long.class);
     private static final RedisScript<Long> PUBLISH=RedisScript.of("""
-        if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
+        local old=redis.call('GET',KEYS[2])
         if ARGV[2]=='1' then
+          if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
           redis.call('SET',KEYS[2],ARGV[3],'EX',25)
           redis.call('ZADD',KEYS[3],ARGV[4],ARGV[5])
-        else redis.call('DEL',KEYS[2]); redis.call('ZREM',KEYS[3],ARGV[5]) end
+          if old~=ARGV[3] then redis.call('PUBLISH',ARGV[6],'changed') end
+        elseif old then
+          local owner=cjson.decode(old)
+          if tostring(owner.hostId)~=ARGV[7] or owner.sessionId~=ARGV[8] then return 0 end
+          redis.call('DEL',KEYS[2]); redis.call('ZREM',KEYS[3],ARGV[5])
+          redis.call('PUBLISH',ARGV[6],'changed')
+        end
         return 1
         """,Long.class);
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
@@ -41,16 +48,20 @@ public class ShootingLobbyService implements GameInvitationAdapter {
         @NotBlank @Pattern(regexp="[A-Z2-9]{8}") private String roomId;
         @NotBlank @Pattern(regexp="[0-9a-f-]{36}") private String runId;
         private boolean open;
+        @Size(max=20) private String title;
+        private boolean privateRoom;
     }
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Stored {
         private Long hostId;
-        private String sessionId, roomId, runId, hostPublicId, nickname, avatar;
+        private String sessionId, roomId, runId, hostPublicId, nickname, avatar, title;
+        private boolean privateRoom;
     }
     @Getter @Builder
     public static class Room {
         private final String id, title, hostPublicId, nickname, avatar;
         private final boolean friend;
+        private final boolean privateRoom;
         private final int players;
     }
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
@@ -67,9 +78,12 @@ public class ShootingLobbyService implements GameInvitationAdapter {
     public void publish(Update request){
         var user=users.findById(request.userId).orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
         var value=Stored.builder().hostId(request.userId).sessionId(request.sessionId).roomId(request.roomId).runId(request.runId)
-            .hostPublicId(user.getPublicId()).nickname(user.getNickname()).avatar(user.getProfileAvatar().name()).build();
+            .hostPublicId(user.getPublicId()).nickname(user.getNickname()).avatar(user.getProfileAvatar().name())
+            .title(request.title).privateRoom(request.privateRoom).build();
+        // 원자 갱신 안에서 실제 표시 내용이 바뀐 경우에만 알린다. 하트비트는 조회 폭주를 만들지 않는다.
         redis.execute(PUBLISH,List.of("shooting:active:"+request.userId,key(request.roomId),INDEX),request.roomId+":"+request.sessionId,
-            request.open?"1":"0",json.writeValueAsString(value),Long.toString(System.currentTimeMillis()+25_000),request.roomId);
+            request.open?"1":"0",json.writeValueAsString(value),Long.toString(System.currentTimeMillis()+25_000),request.roomId,
+            ShootingLobbyEvents.TOPIC,request.userId.toString(),request.sessionId);
     }
     public Page list(Long userId,Query query){
         if(!properties.enabled())throw new BusinessException(ErrorCode.SHOOTING_UNAVAILABLE);
@@ -90,7 +104,7 @@ public class ShootingLobbyService implements GameInvitationAdapter {
             if(leases==null||!Objects.equals(leases.get(index),s.roomId+":"+s.sessionId))continue;
             String title=title(s);if(!title.toLowerCase(Locale.ROOT).contains(search)&&!s.nickname.toLowerCase(Locale.ROOT).contains(search))continue;
             boolean friend=friendIds.contains(s.hostId);if(query.friendsOnly&&!friend)continue;
-            rooms.add(Room.builder().id(s.roomId).title(title).hostPublicId(s.hostPublicId).nickname(s.nickname).avatar(s.avatar).friend(friend).players(1).build());
+            rooms.add(Room.builder().id(s.roomId).title(title).hostPublicId(s.hostPublicId).nickname(s.nickname).avatar(s.avatar).friend(friend).privateRoom(s.privateRoom).players(1).build());
         }
         rooms.sort(Comparator.comparing(Room::isFriend).reversed().thenComparing(Room::getTitle).thenComparing(Room::getId));
         int pages=Math.max(1,Math.ceilDiv(rooms.size(),4)),page=Math.clamp(query.page,1,pages),start=(page-1)*4;
@@ -113,6 +127,6 @@ public class ShootingLobbyService implements GameInvitationAdapter {
         try{return Optional.of(json.readValue(raw,Stored.class));}catch(RuntimeException e){return Optional.empty();}
     }
     private boolean live(Stored s){return Objects.equals(redis.opsForValue().get("shooting:active:"+s.hostId),s.roomId+":"+s.sessionId);}
-    private String title(Stored s){return s.nickname+"님의 방";}
+    private String title(Stored s){return s.title==null||s.title.isBlank()?s.nickname+"님의 방":s.title;}
     private String key(String room){return "shooting:lobby:"+room;}
 }

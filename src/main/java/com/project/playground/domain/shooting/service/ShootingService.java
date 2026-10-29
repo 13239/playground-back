@@ -117,6 +117,12 @@ public class ShootingService {
         redis.execute(RELEASE, List.of(leaseKey(request)), leaseValue(request));
     }
 
+    /** 같은 방의 재도전도 신규 플레이 정책을 다시 확인해 점검·비활성 모드를 우회하지 않는다. */
+    public void restart(ShootingRequest.Ticket request) {
+        requireEnabled();
+        availability.requireNewPlay("SHOOTING", request.getMode());
+    }
+
     @Transactional
     public void checkpoint(ShootingRequest.Checkpoint request) {
         sessions.findBySessionId(UUID.fromString(request.getSessionId()), request.getUserId())

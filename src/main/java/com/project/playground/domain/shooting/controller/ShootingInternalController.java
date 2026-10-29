@@ -19,6 +19,13 @@ public class ShootingInternalController {
     private final ShootingService shooting;
     private final ShootingLobbyService lobby;
 
+    /** 이미 연결된 게임 서버도 새로운 도전 직전에 운영 정책을 다시 확인한다. */
+    @PostMapping("/restart")
+    public ResponseEntity<Void> restart(@Valid @RequestBody ShootingRequest.Ticket request) {
+        shooting.restart(request);
+        return ResponseEntity.noContent().build();
+    }
+
     /** 대기실 공개 여부는 HMAC을 통과한 게임 서버만 갱신한다. */
     @PostMapping("/lobby")
     public ResponseEntity<Void> lobby(@Valid @RequestBody ShootingLobbyService.Update request) {

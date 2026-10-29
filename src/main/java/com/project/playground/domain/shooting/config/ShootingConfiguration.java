@@ -1,6 +1,7 @@
 package com.project.playground.domain.shooting.config;
 
 import com.project.playground.domain.shooting.security.ShootingServiceAuthFilter;
+import com.project.playground.domain.shooting.service.ShootingLobbyEvents;
 import com.project.playground.global.security.handler.SecurityProblemWriter;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -9,6 +10,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -20,6 +24,15 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 @PropertySource("classpath:shooting.properties")
 @EnableConfigurationProperties(ShootingProperties.class)
 public class ShootingConfiguration {
+    /** 슈팅 로비의 변경 신호를 다른 MVC 인스턴스의 인증된 구독자에게도 전달한다. */
+    @Bean
+    public RedisMessageListenerContainer shootingLobbyListener(
+            RedisConnectionFactory factory, ShootingLobbyEvents events) {
+        var listener = new RedisMessageListenerContainer();
+        listener.setConnectionFactory(factory);
+        listener.addMessageListener(events, new ChannelTopic(ShootingLobbyEvents.TOPIC));
+        return listener;
+    }
     @Bean
     @Order(1)
     public SecurityFilterChain shootingInternalSecurity(
