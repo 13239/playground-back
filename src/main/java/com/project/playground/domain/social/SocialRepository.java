@@ -62,6 +62,24 @@ class SocialRepository {
             Math.min(a,b),Math.max(a,b),id,a,now,id,a,now);
     }
     void resolve(String id,String state,Instant now) { update("UPDATE tbl_social_friend SET state=?,resolved_at=? WHERE request_id=?",state,now,id); }
+    /** 호출자가 두 회원의 정렬된 잠금을 확보한 상태에서만 방향별 거절 보호 상태를 읽고 변경한다. */
+    RequestGuard requestGuard(long requester,long target) {
+        return first(list("SELECT consecutive_rejections,blocked_until FROM tbl_social_friend_request_guard WHERE requester_id=? AND target_id=?",
+            (r,n)->RequestGuard.builder().consecutiveRejections(r.getInt("consecutive_rejections"))
+                .blockedUntil(r.getTimestamp("blocked_until")==null?null:r.getTimestamp("blocked_until").toInstant()).build(),requester,target));
+    }
+    void saveRequestGuard(long requester,long target,int rejections,Instant blockedUntil) {
+        // 상태와 기한은 같은 트랜잭션에 기록해 재시작·동시 거절에도 횟수가 유실되지 않게 한다.
+        update("INSERT INTO tbl_social_friend_request_guard(requester_id,target_id,consecutive_rejections,blocked_until) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE consecutive_rejections=?,blocked_until=?",
+            requester,target,rejections,blockedUntil,rejections,blockedUntil);
+    }
+    void clearRequestGuard(long requester,long target) {
+        update("DELETE FROM tbl_social_friend_request_guard WHERE requester_id=? AND target_id=?",requester,target);
+    }
+    void clearRequestGuards(long a,long b) {
+        // 친구 수락은 양쪽 모두의 거절 연속 기록을 종료한다. 요청 취소·차단 변경만으로는 지우지 않는다.
+        update("DELETE FROM tbl_social_friend_request_guard WHERE (requester_id=? AND target_id=?) OR (requester_id=? AND target_id=?)",a,b,b,a);
+    }
     long friendCount(long id) { return count("SELECT COUNT(*) FROM tbl_social_friend WHERE (first_user_id=? OR second_user_id=?) AND state='ACCEPTED'",id,id); }
     long dailyRequests(long id,Instant since) { return count("SELECT COUNT(*) FROM tbl_social_notification WHERE actor_id=? AND kind='FRIEND_REQUEST' AND created_at>=?",id,since); }
     Page<Person> friends(long id,int page,String search) {

@@ -19,6 +19,12 @@ public enum ErrorCode {
     SOCIAL_CONFLICT(HttpStatus.CONFLICT, "상태가 변경되었거나 지금 처리할 수 없는 요청입니다. 새로 확인해 주세요."),
     SOCIAL_ACCESS_DENIED(HttpStatus.FORBIDDEN, "현재 친구 또는 그룹 참가 권한이 없습니다."),
     SOCIAL_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "친구 요청 또는 그룹 인원 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."),
+    // 정상 사용의 요청 예산·재요청 보호·관계 한도를 구분해 같은 429로 오인하지 않게 한다.
+    SOCIAL_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "요청이 많습니다. 잠시 후 다시 시도해 주세요."),
+    SOCIAL_FRIEND_REQUEST_COOLDOWN(HttpStatus.CONFLICT, "같은 상대에게 친구 요청을 연속 5번 거절당했어요. 마지막 거절 후 24시간이 지나면 다시 보낼 수 있어요."),
+    SOCIAL_FRIEND_REQUEST_DAILY_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "최근 24시간 동안 친구 요청을 50회 보냈어요. 이전 요청을 보낸 지 24시간이 지나면 다시 시도해 주세요."),
+    SOCIAL_FRIEND_CAPACITY(HttpStatus.CONFLICT, "친구는 최대 200명까지 추가할 수 있어요. 친구 목록을 정리한 뒤 다시 시도해 주세요."),
+    SOCIAL_FRIEND_REQUEST_INBOX_FULL(HttpStatus.CONFLICT, "상대의 받은 친구 요청이 가득 찼어요. 상대가 요청을 정리한 뒤 다시 시도해 주세요."),
     SOCIAL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "친구 기능을 일시적으로 이용할 수 없습니다. 다시 시도해 주세요."),
     // 본인 탈퇴의 비밀번호 대입·중복 제출은 계정별로 제한한다.
     ACCOUNT_WITHDRAWAL_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "회원탈퇴 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),

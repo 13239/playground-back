@@ -2,6 +2,8 @@ package com.project.playground.domain.social;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.project.playground.global.exception.BusinessException;
@@ -25,6 +27,10 @@ public class SocialService {
     private final com.project.playground.domain.gameinvite.GameInvitationService gameInvitations;
     private final java.time.Clock gomokuClock;
     private static final long FOREVER=Long.MAX_VALUE;
+    private static final int REJECTION_LIMIT=5;
+    private static final long REJECTION_COOLDOWN_SECONDS=86400;
+    // 검증된 공통 Lua와 단일 스크립트 인스턴스로 증가·만료·남은 대기 시간을 원자적으로 처리한다.
+    private static final RedisScript<Long> COMMAND_BUDGET=RedisScript.of(new ClassPathResource("redis/login-rate-limit/acquire.lua"),Long.class);
     private static BusinessException denied(){return new BusinessException(ErrorCode.SOCIAL_ACCESS_DENIED);}
     private static BusinessException conflict(){return new BusinessException(ErrorCode.SOCIAL_CONFLICT);}
     private static BusinessException missing(){return new BusinessException(ErrorCode.SOCIAL_NOT_FOUND);}
@@ -93,11 +99,15 @@ public class SocialService {
     public Object command(long me,String action,Command c) {
         require(me);
         // 목록·연결 복구와 별개인 회원별 변경 예산으로 스팸/과도한 그룹 생성 요청을 제한한다.
+        // 알림 읽음·방 조회는 별도 예산을 사용해 정상 친구 추가의 횟수를 소진하지 않는다.
         // 증가·만료를 한 번에 적용해 중단된 요청이 영구 제한 키를 남기지 않는다.
-        var budget=org.springframework.data.redis.core.script.RedisScript.of(
-            "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],60) end; return n",Long.class);
-        Long used=redis.execute(budget,List.of("social:commands:"+me));
-        if(used==null||used>60)throw limit();
+        switch(action) {
+            // 반복 조회·중복 클릭의 서버 보호 예산과 실제 새 친구 요청의 전송 예산을 분리한다.
+            case "friend-request" -> acquireBudget(me,"friend-request-checks",120);
+            case "notification-read","notifications-read" -> acquireBudget(me,"notification-reads",120);
+            case "room" -> acquireBudget(me,"room-reads",120);
+            default -> acquireBudget(me,"commands",60);
+        }
         return switch(action) {
             case "friend-request" -> request(me,c.getTargetId());
             case "friend-accept","friend-reject","friend-cancel" -> resolve(me,action,c.getRequestId());
@@ -114,15 +124,31 @@ public class SocialService {
             default -> throw new BusinessException(ErrorCode.INVALID_REQUEST_BODY);
         };
     }
+    private void acquireBudget(long me,String scope,int maximum) {
+        // 이전 공용 카운터를 재사용하지 않아 읽음 요청이 쌓인 제한도 새 정책에 전파되지 않는다.
+        Long remaining=redis.execute(COMMAND_BUDGET,List.of("social:budget:v2:"+scope+":"+me),Integer.toString(maximum),"60000");
+        if(remaining==null)throw new BusinessException(ErrorCode.SOCIAL_UNAVAILABLE);
+        if(remaining>0)throw new SocialRateLimitException((remaining+999)/1000);
+    }
     private Person request(long me,String id) {
         Account other=target(id);lock(me,other.getId());
         if(me==other.getId()||repository.blocked(me,other.getId()))throw denied();
         Friend f=repository.relation(me,other.getId());
         if(f!=null&&(f.getState().equals("PENDING")||f.getState().equals("ACCEPTED")))return profile(me,id);
-        Instant now=Instant.now();
-        if(f!=null&&f.getState().equals("REJECTED")&&f.getResolvedAt().isAfter(now.minusSeconds(86400)))throw limit();
-        if(repository.dailyRequests(me,now.minusSeconds(86400))>=50||repository.friendCount(me)>=200
-            ||repository.count("SELECT COUNT(*) FROM tbl_social_friend WHERE state='PENDING' AND (first_user_id=? OR second_user_id=?) AND requester_id<>?",other.getId(),other.getId(),other.getId())>=200)throw limit();
+        Instant now=gomokuClock.instant();
+        // 거절 후 재요청 보호와 관계 한도는 요청 폭주(429)와 구분해 정확한 이유를 안내한다.
+        // 같은 상대에게 연속 다섯 번 거절당한 발신자만 제한하며 반대 방향의 요청은 별도로 판단한다.
+        var guard=repository.requestGuard(me,other.getId());
+        if(guard!=null&&guard.getBlockedUntil()!=null) {
+            if(guard.getBlockedUntil().isAfter(now))throw new BusinessException(ErrorCode.SOCIAL_FRIEND_REQUEST_COOLDOWN);
+            // 24시간이 지난 뒤 첫 재요청은 새로운 거절 연속 기록으로 시작한다.
+            repository.clearRequestGuard(me,other.getId());
+        }
+        if(repository.dailyRequests(me,now.minusSeconds(86400))>=50)throw new BusinessException(ErrorCode.SOCIAL_FRIEND_REQUEST_DAILY_LIMIT);
+        if(repository.friendCount(me)>=200)throw new BusinessException(ErrorCode.SOCIAL_FRIEND_CAPACITY);
+        if(repository.count("SELECT COUNT(*) FROM tbl_social_friend WHERE state='PENDING' AND (first_user_id=? OR second_user_id=?) AND requester_id<>?",other.getId(),other.getId(),other.getId())>=200)throw new BusinessException(ErrorCode.SOCIAL_FRIEND_REQUEST_INBOX_FULL);
+        // 이미 보낸 요청·친구 관계를 확인한 호출은 새로운 친구 요청 예산을 사용하지 않는다.
+        acquireBudget(me,"friend-requests",60);
         String request=UUID.randomUUID().toString();
         repository.request(me,other.getId(),request,now);repository.notify(other.getId(),me,"FRIEND_REQUEST",request,now);
         changed(List.of(me,other.getId()),List.of());return profile(me,id);
@@ -135,17 +161,26 @@ public class SocialService {
         long other=f.getFirst()==me?f.getSecond():f.getFirst();
         if(action.equals("friend-cancel")?f.getRequester()!=me:f.getRequester()==me)throw denied();
         if(repository.blocked(me,other))throw denied();
-        Instant now=Instant.now();
+        Instant now=gomokuClock.instant();
         String state=action.equals("friend-accept")?"ACCEPTED":action.equals("friend-reject")?"REJECTED":"CANCELLED";
         if(state.equals("ACCEPTED")&&(repository.friendCount(me)>=200||repository.friendCount(other)>=200))throw limit();
         var direct=repository.direct(me,other);
         List<String> rooms=direct==null?List.of():invalidate(List.of(direct.getId()));
         repository.resolve(id,state,now);repository.resolvedNotifications(id,now);
+        // 실제 PENDING→REJECTED 전환에만 누적한다. 중복 거절·발신자 취소는 횟수를 늘리지 않는다.
+        if(state.equals("REJECTED"))recordRejection(f.getRequester(),me,now);
         if(state.equals("ACCEPTED")) {
+            repository.clearRequestGuards(me,other);
             if(direct!=null)repository.update("UPDATE tbl_social_room SET read_until_micros=? WHERE id=?",FOREVER,direct.getId());
             repository.notify(other,me,"FRIEND_ACCEPTED",require(me).getPublicId(),now);
         }
         changed(List.of(me,other),rooms);return Map.of("ok",true);
+    }
+    private void recordRejection(long requester,long target,Instant now) {
+        var guard=repository.requestGuard(requester,target);
+        boolean expired=guard!=null&&guard.getBlockedUntil()!=null&&!guard.getBlockedUntil().isAfter(now);
+        int rejections=guard==null||expired?1:Math.min(REJECTION_LIMIT,guard.getConsecutiveRejections()+1);
+        repository.saveRequestGuard(requester,target,rejections,rejections>=REJECTION_LIMIT?now.plusSeconds(REJECTION_COOLDOWN_SECONDS):null);
     }
     private Object remove(long me,String action,String target) {
         Account other=target(target);lock(me,other.getId());if(me==other.getId())throw denied();

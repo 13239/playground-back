@@ -56,6 +56,10 @@ public class ShootingService {
 
     public ShootingResponse.Ticket ticket(Session session, ShootingRequest.Ticket request) {
         requireEnabled();
+        // 방 코드 권한은 협동 방 한 곳으로만 한정한다. 생성·다른 방 참가로 전용할 수 없다.
+        if (request.getInvitedRoomCode() != null
+                && (!"COOP".equals(request.getMode()) || !request.getInvitedRoomCode().matches("[A-Z2-9]{8}")))
+            throw new BusinessException(ErrorCode.INVALID_REQUEST_BODY);
         rate(session.getId(), "ticket", 20);
         availability.requireNewPlay("SHOOTING", request.getMode());
         var user =
@@ -73,6 +77,7 @@ public class ShootingService {
                         .avatar(user.getProfileAvatar().name())
                         .mode(request.getMode())
                         .origin(properties.appOrigin())
+                        .invitedRoomCode(request.getInvitedRoomCode())
                         .proofRequired(
                                 !BrowserProof.DEV_HTTP_BINDING.equals(
                                         session.getBrowserKeyThumbprint()))

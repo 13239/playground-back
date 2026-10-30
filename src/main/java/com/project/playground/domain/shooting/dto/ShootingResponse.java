@@ -30,6 +30,8 @@ public final class ShootingResponse {
         private String mode;
         private String origin;
         private boolean proofRequired;
+        // 이 내부 권한은 Redis 일회용 티켓으로만 게임 서버에 전달하며 공개 티켓 응답에는 싣지 않는다.
+        private String invitedRoomCode;
     }
 
     @Getter

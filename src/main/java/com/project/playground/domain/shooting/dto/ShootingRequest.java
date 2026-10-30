@@ -30,6 +30,10 @@ public final class ShootingRequest {
         @NotBlank
         @Pattern(regexp = "SINGLE|COOP")
         private String mode;
+
+        // 초대·링크·코드 참여는 특정 방에 묶인 일회용 참가권으로 비밀번호 없이 입장한다.
+        @Pattern(regexp = "[A-Z2-9]{8}")
+        private String invitedRoomCode;
     }
 
     @Getter

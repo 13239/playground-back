@@ -8,6 +8,7 @@ import com.project.playground.auth.ratelimit.SignUpRateLimitException;
 import com.project.playground.auth.ratelimit.PasswordChangeRateLimitException;
 import com.project.playground.auth.ratelimit.AccountWithdrawalRateLimitException;
 import com.project.playground.domain.gomoku.service.RoomRateLimitException;
+import com.project.playground.domain.social.SocialRateLimitException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.*;
@@ -24,6 +25,12 @@ import java.util.Objects;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 소셜의 기능별 분리 예산도 공통 Retry-After 계약으로 재시도 시각을 공개한다.
+    @ExceptionHandler(SocialRateLimitException.class)
+    public ResponseEntity<ProblemDetail> socialRateLimit(SocialRateLimitException exception) {
+        return rateLimitResponse(exception.getErrorCode(), exception.getRetryAfterSeconds());
+    }
 
     // 탈퇴 재시도도 공통 Retry-After 응답을 사용하며 원문 비밀번호나 내부 오류는 노출하지 않는다.
     @ExceptionHandler(AccountWithdrawalRateLimitException.class)

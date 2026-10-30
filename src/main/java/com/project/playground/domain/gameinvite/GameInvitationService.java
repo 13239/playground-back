@@ -74,7 +74,9 @@ public class GameInvitationService {
         lock(original.inviter,original.target);
         var i=jdbc.sql("SELECT * FROM tbl_game_invitation WHERE id=? FOR UPDATE").param(original.id).query(this::read).single();
         var room=adapter(i.game).available(i.roomId,i.inviter,i.inviterSession);
-        boolean valid=room.isPresent()&&room.get().getVersion().equals(i.roomVersion)&&clock.instant().isBefore(i.expires)&&friendship.friends(i.inviter,i.target);
+        // 15초는 최초 응답 기한이다. 이미 수락한 응답의 재조회가 기한 경과만으로 취소되지는 않는다.
+        boolean valid=room.isPresent()&&room.get().getVersion().equals(i.roomVersion)&&friendship.friends(i.inviter,i.target)
+            &&(!i.state.equals("PENDING")||clock.instant().isBefore(i.expires));
         if(!i.state.equals("PENDING"))return decision(i.state.equals("ACCEPTED")&&!valid?"CANCELLED":i.state,i.state.equals("ACCEPTED")&&valid?i.roomId:null);
         String state=!valid?"EXPIRED":action.equals("accept")?"ACCEPTED":action.equals("cancel")?"CANCELLED":"REJECTED";
         if(state.equals("ACCEPTED")&&!adapter(i.game).targetAvailable(i.target))throw failure(ErrorCode.GAME_INVITATION_TARGET_UNAVAILABLE);
