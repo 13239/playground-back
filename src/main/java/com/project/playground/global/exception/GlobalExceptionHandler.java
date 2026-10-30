@@ -50,7 +50,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessRestrictedException.class)
     public ResponseEntity<ProblemDetail> accessRestricted(AccessRestrictedException exception) {
         ProblemDetail problem = ApiProblemFactory.create(ErrorCode.ACCESS_RESTRICTED);
-        if (com.project.playground.auth.audit.LoginAuditContext.current() == null) problem.setDetail(exception.getNotice());
+        problem.setDetail(exception.getNotice());
         return ResponseEntity.status(problem.getStatus()).cacheControl(CacheControl.noStore()).body(problem);
     }
 

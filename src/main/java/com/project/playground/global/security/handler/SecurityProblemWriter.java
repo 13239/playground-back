@@ -37,7 +37,7 @@ public class SecurityProblemWriter {
         }
 
         ProblemDetail problem = ApiProblemFactory.create(errorCode);
-        if (errorCode == ErrorCode.ACCESS_RESTRICTED && com.project.playground.auth.audit.LoginAuditContext.current() == null) problem.setDetail(notice);
+        if (errorCode == ErrorCode.ACCESS_RESTRICTED) problem.setDetail(notice);
 
         // MVC를 거치지 않으므로 요청 경로를 직접 설정하며 쿼리 문자열은 포함하지 않는다.
         problem.setInstance(URI.create(request.getRequestURI()));

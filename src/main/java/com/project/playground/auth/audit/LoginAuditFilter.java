@@ -77,7 +77,7 @@ public class LoginAuditFilter extends OncePerRequestFilter {
                 catch (RuntimeException unavailable) { metadata = Map.of("environment", "unavailable"); }
                 var detail = attempt.finish(finalStatus, metadata);
                 String code = finalStatus < 400 ? null : attempt.failure() == ErrorCode.LOGIN_CONFIRMATION_REQUIRED
-                        ? ErrorCode.LOGIN_CONFIRMATION_REQUIRED.name() : attempt.credentialsMismatch()
+                        || attempt.failure() == ErrorCode.ACCESS_RESTRICTED ? attempt.failure().name() : attempt.credentialsMismatch()
                         ? ErrorCode.INVALID_CREDENTIALS.name() : ErrorCode.LOGIN_SERVER_ERROR.name();
                 outbox.enqueue(new LoginAuditRecord(UUID.randomUUID().toString(), occurredAt, finalStatus < 400,
                         code, attempt.userId(), ip, agent, detail));

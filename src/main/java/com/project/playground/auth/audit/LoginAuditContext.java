@@ -18,7 +18,8 @@ public final class LoginAuditContext {
         var attempt = current();
         if (attempt == null) return original;
         attempt.failure(original);
-        if (original == ErrorCode.LOGIN_CONFIRMATION_REQUIRED) return original;
+        // 관리자가 의도적으로 제한한 접속과 로그인 교체 확인은 공개 가능한 정상 정책 응답이다.
+        if (original == ErrorCode.LOGIN_CONFIRMATION_REQUIRED || original == ErrorCode.ACCESS_RESTRICTED) return original;
         if (original == ErrorCode.INVALID_CREDENTIALS && attempt.credentialsMismatch()) return original;
         return ErrorCode.LOGIN_SERVER_ERROR;
     }
