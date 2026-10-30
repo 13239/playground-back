@@ -156,6 +156,7 @@ public enum ErrorCode {
 
     // 로그인 및 세션 관련 비즈니스 오류
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
+    LOGIN_SERVER_ERROR(HttpStatus.SERVICE_UNAVAILABLE, "서버 오류로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다."),
     // 검증된 이전 세대 토큰의 재사용을 감지하여 해당 로그인 세션을 폐기한 경우
     REFRESH_TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "인증 정보 재사용이 감지되어 로그인 세션을 종료했습니다. 다시 로그인해 주세요."),

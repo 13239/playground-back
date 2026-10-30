@@ -58,6 +58,8 @@ public class AuthResultCipher {
                     ByteBuffer.allocate(iv.length + encrypted.length).put(iv).put(encrypted).array());
         } catch (GeneralSecurityException | RuntimeException e) {
             // 직렬화 예외에는 토큰이 포함될 수 있으므로 원문·원인 예외를 응답이나 로그에 남기지 않는다.
+            com.project.playground.auth.audit.LoginAuditContext.exception(e);
+            com.project.playground.auth.audit.LoginAuditContext.reason("RESULT_ENCRYPTION_FAILED");
             throw new BusinessException(ErrorCode.AUTH_SERVICE_UNAVAILABLE);
         }
     }
@@ -86,6 +88,8 @@ public class AuthResultCipher {
 
             return tokens;
         } catch (GeneralSecurityException | RuntimeException e) {
+            com.project.playground.auth.audit.LoginAuditContext.exception(e);
+            com.project.playground.auth.audit.LoginAuditContext.reason("RESULT_DECRYPTION_FAILED");
             throw new BusinessException(ErrorCode.AUTH_SERVICE_UNAVAILABLE);
         }
     }

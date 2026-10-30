@@ -25,11 +25,11 @@ public class PasswordEncoderConfig {
                 2          // 반복 횟수
         );
 
-        return new DelegatingPasswordEncoder(
+        return new com.project.playground.auth.audit.LoginAuditPasswordEncoder(new DelegatingPasswordEncoder(
                 encodeId,
                 Map.of(
                         "argon2_v1", argon2_v1 // 추후 버전 확장 시 이 부분은 유지하고 v2, v3 ... 으로 Map에 추가하면 됨
                 )
-        );
+        ));
     }
 }

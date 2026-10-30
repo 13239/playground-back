@@ -37,7 +37,7 @@ public class SecurityProblemWriter {
         }
 
         ProblemDetail problem = ApiProblemFactory.create(errorCode);
-        if (errorCode == ErrorCode.ACCESS_RESTRICTED) problem.setDetail(notice);
+        if (errorCode == ErrorCode.ACCESS_RESTRICTED && com.project.playground.auth.audit.LoginAuditContext.current() == null) problem.setDetail(notice);
 
         // MVC를 거치지 않으므로 요청 경로를 직접 설정하며 쿼리 문자열은 포함하지 않는다.
         problem.setInstance(URI.create(request.getRequestURI()));
@@ -45,7 +45,7 @@ public class SecurityProblemWriter {
         // 직렬화를 먼저 완료한 후 UTF-8 JSON 응답을 작성한다.
         byte[] body = jsonMapper.writeValueAsBytes(problem);
 
-        response.setStatus(errorCode.getStatus().value());
+        response.setStatus(problem.getStatus());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setHeader(HttpHeaders.CACHE_CONTROL, CacheControl.noStore().getHeaderValue());

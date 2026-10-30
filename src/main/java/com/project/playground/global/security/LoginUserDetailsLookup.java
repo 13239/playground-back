@@ -22,6 +22,18 @@ public class LoginUserDetailsLookup {
 
     public Optional<CustomUserDetails> findByUsername(String username) {
         // 입력 원문을 키로 사용하고 다음 요청에서는 새로 조회하여 계정 상태를 재확인한다.
-        return users.computeIfAbsent(username, name -> userReader.findByUsername(name).map(CustomUserDetails::new));
+        return users.computeIfAbsent(username, name -> {
+            com.project.playground.auth.audit.LoginAuditContext.step("ACCOUNT_LOOKUP");
+            var user = userReader.findByUsername(name);
+            com.project.playground.auth.audit.LoginAuditContext.fact("accountFound", user.isPresent());
+            user.ifPresent(value -> {
+                com.project.playground.auth.audit.LoginAuditContext.fact("accountStatus", value.getStatus().name());
+                com.project.playground.auth.audit.LoginAuditContext.fact("accountDeleted", value.getDeletedAt() != null);
+                com.project.playground.auth.audit.LoginAuditContext.fact("nickname", value.getNickname());
+                var attempt = com.project.playground.auth.audit.LoginAuditContext.current();
+                if (attempt != null) attempt.user(value.getId());
+            });
+            return user.map(CustomUserDetails::new);
+        });
     }
 }

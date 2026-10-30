@@ -4,4 +4,5 @@ import com.project.playground.domain.activitylog.entity.ActivityLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
+    boolean existsByLoginAuditEventId(String loginAuditEventId);
 }

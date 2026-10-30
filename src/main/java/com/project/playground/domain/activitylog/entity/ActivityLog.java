@@ -49,6 +49,10 @@ public class ActivityLog {
     @Column(columnDefinition = "json")
     private String detail;
 
+    // 로그인 진단 재전송의 중복 방지용 ID다. 기존 활동 기록과 다른 활동은 null을 유지한다.
+    @Column(name = "login_audit_event_id", length = 36)
+    private String loginAuditEventId;
+
     // 입력 당시 식별자의 검색 전용 가상 컬럼이다. 기존 로그 저장 입력·스냅샷은 변경하지 않는다.
     @Column(name = "search_username", length = 50, insertable = false, updatable = false)
     private String searchUsername;
@@ -62,7 +66,7 @@ public class ActivityLog {
 
     @Builder
     public ActivityLog(ActivityType type, ActivityResult result, String failureCode, Long userId,
-                       String clientIp, String userAgent, String detail, LocalDateTime occurredAt) {
+                       String clientIp, String userAgent, String detail, LocalDateTime occurredAt, String loginAuditEventId) {
         this.type = type;
         this.result = result;
         this.failureCode = failureCode;
@@ -70,6 +74,7 @@ public class ActivityLog {
         this.clientIp = clientIp;
         this.userAgent = userAgent;
         this.detail = detail;
+        this.loginAuditEventId = loginAuditEventId;
         this.occurredAt = occurredAt;
     }
 }

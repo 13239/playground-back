@@ -44,6 +44,7 @@ public class LoginRateLimitService {
 
         try {
             // IP 제한을 먼저 적용하여 차단된 IP의 DB 조회와 비밀번호 검증을 막는다.
+            com.project.playground.auth.audit.LoginAuditContext.step("IP_RATE_LIMIT");
             String ipSubject = "ip:v2:" + fingerprint(clientIp);
             String reservationId = UUID.randomUUID().toString();
             long remainingMillis = rateLimitRepository.reserve(ipSubject, reservationId, properties.ipMaxAttempts(), properties.ipWindow());
@@ -59,6 +60,7 @@ public class LoginRateLimitService {
                     .map(user -> "account:" + user.getId())
                     .orElseGet(() -> "unknown:" + fingerprint(Normalizer.normalize(username, Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT)));
 
+            com.project.playground.auth.audit.LoginAuditContext.step("ACCOUNT_RATE_LIMIT");
             acquire(
                     accountSubject,
                     properties.accountMaxAttempts(),
@@ -68,6 +70,7 @@ public class LoginRateLimitService {
             return LoginRateLimitAttempt.builder().accountSubject(accountSubject)
                     .ipSubject(ipSubject).reservationId(reservationId).build();
         } catch (DataAccessException e) {
+            com.project.playground.auth.audit.LoginAuditContext.exception(e);
             // 제한 상태를 확인할 수 없으면 인증을 진행하지 않고 일시적인 서비스 오류로 처리한다.
             log.error("로그인 시도 제한 확인 중 데이터 저장소 접근 실패", e);
 
@@ -84,6 +87,7 @@ public class LoginRateLimitService {
             // IP 예산의 다른 실패나 새 시간 창을 지우지 않는다. 성공은 공용 IP의 제한을 소모하지 않는다.
             rateLimitRepository.release(attempt.getIpSubject(), attempt.getReservationId());
         } catch (DataAccessException e) {
+            com.project.playground.auth.audit.LoginAuditContext.exception(e);
             // 초기화에 실패하면 신규 로그인 세션을 만들기 전에 요청을 중단한다.
             log.error("로그인 성공 후 계정 시도 카운터 초기화 실패", e);
 

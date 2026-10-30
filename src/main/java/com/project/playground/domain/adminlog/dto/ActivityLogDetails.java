@@ -10,4 +10,5 @@ public class ActivityLogDetails {
     private final ActivityLogSummary entry;
     private final String userAgent;
     private final List<LogAttribute> attributes;
+    private final LoginLogDiagnostics loginDiagnostics;
 }

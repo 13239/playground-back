@@ -27,6 +27,8 @@ public class BrowserProofFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        // BFF 서버 인증을 통과한 진단 전용 경로다. 로그인·세션을 만들거나 조회하지 않는다.
+        if (request.getMethod().equals("POST") && request.getRequestURI().equals("/internal/auth/login-failures")) return true;
         // 비개인화된 게임·장르·필터 카탈로그 GET만 브라우저 개인키 없이 읽는다.
         // 관리용 /api/admin/game-filters와 게임 실행 요청은 증명 예외에 포함하지 않는다.
         if (request.getMethod().equals("GET") && (request.getRequestURI().equals("/api/games")
@@ -39,9 +41,11 @@ public class BrowserProofFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
+        com.project.playground.auth.audit.LoginAuditContext.step("BROWSER_PROOF");
         // dev에서도 BFF 서버 인증과 보호 API의 Bearer·Redis 검증은 그대로 수행한다.
         if (!proofRequired) {
             request.setAttribute(BrowserProof.ATTRIBUTE, BrowserProof.forDevelopmentHttp());
+            com.project.playground.auth.audit.LoginAuditContext.step("INPUT_VALIDATION");
             chain.doFilter(request, response);
             return;
         }
@@ -59,6 +63,7 @@ public class BrowserProofFilter extends OncePerRequestFilter {
             errors.write(request, response, ErrorCode.AUTH_SERVICE_UNAVAILABLE);
             return;
         }
+        com.project.playground.auth.audit.LoginAuditContext.step("INPUT_VALIDATION");
         chain.doFilter(request, response);
     }
 }

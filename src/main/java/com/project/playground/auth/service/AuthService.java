@@ -1,6 +1,7 @@
 package com.project.playground.auth.service;
 
 import com.project.playground.auth.crypto.AuthResultCipher;
+import com.project.playground.auth.audit.LoginAuditContext;
 import com.project.playground.auth.proof.BrowserProof;
 import com.project.playground.auth.dto.internal.LoginRateLimitAttempt;
 import com.project.playground.auth.dto.internal.LoginSessionReplacement;
@@ -11,8 +12,6 @@ import com.project.playground.auth.dto.response.SessionActivityResponse;
 import com.project.playground.auth.ratelimit.LoginRateLimitService;
 import com.project.playground.auth.repository.RedisSessionRepository;
 import com.project.playground.auth.session.SessionExpirationPolicy;
-import com.project.playground.domain.activitylog.enums.ActivityType;
-import com.project.playground.domain.activitylog.service.ActivityLogger;
 import com.project.playground.domain.accesspolicy.service.AccessPolicyAdmissionService;
 import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
@@ -36,7 +35,6 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -63,57 +61,55 @@ public class AuthService {
     // 동시 재로그인에서도 같은 토큰을 반환하도록 로그인 결과를 짧게 암호화해 공유한다.
     private final AuthResultCipher authResultCipher;
 
-    // 활동 로그 저장은 비동기로 처리되어 로그 저장 실패나 지연이 로그인 응답에 영향을 주지 않는다.
-    private final ActivityLogger activityLogger;
-
     // 로그인 제한 단계에서 조회한 요청별 계정 정보를 활동 로그에 재사용하여 DB를 다시 조회하지 않는다.
     private final LoginUserDetailsLookup loginUserDetailsLookup;
 
     public LoginResponse login(LoginRequest request, String clientIp, BrowserProof proof) {
+        LoginAuditContext.fact("username", request.getUsername());
+        LoginAuditContext.fact("keepLoggedIn", request.getKeepLoggedIn());
+        LoginAuditContext.fact("replacementRequested", Boolean.TRUE.equals(request.getReplaceExistingSession()));
         // 인증 시도 횟수를 먼저 증가시켜 동시 요청도 제한에 포함한다.
         var loginAttempt = loginRateLimitService.beforeLogin(request.getUsername(), clientIp);
 
         CustomUserDetails account = loginUserDetailsLookup.findByUsername(request.getUsername()).orElse(null);
-        Long userId = account == null ? null : account.getId();
-        Map<String, Object> detail = loginDetail(request, account);
+        if (LoginAuditContext.current() != null && account != null) LoginAuditContext.current().user(account.getId());
 
         try {
             LoginResponse response = authenticateAndCreateSession(request, proof, loginAttempt);
 
-            // 비밀번호 인증과 세션 생성까지 끝난 로그인만 성공으로 기록한다.
-            activityLogger.success(ActivityType.LOGIN, userId, detail);
+            // 성공·실패 기록은 보안 필터/검증 실패까지 다루는 바깥 로그인 필터가 한 번만 저장한다.
+            LoginAuditContext.step("BACKEND_COMPLETED");
 
             return response;
-        } catch (BusinessException e) {
-            // 요청 제한을 통과한 시도의 실패만 기록한다. 제한 초과 요청까지 기록하면 공격 요청 수만큼 로그 테이블이 늘어난다.
-            activityLogger.failure(ActivityType.LOGIN, userId, e.getErrorCode(), detail);
+        } catch (RuntimeException e) {
+            LoginAuditContext.exception(e);
             throw e;
         }
-    }
-
-    // 로그인 시 입력한 아이디·로그인 유지 여부와 해당 계정의 닉네임을 남긴다. 비밀번호와 교체 증명은 남기지 않는다.
-    private static Map<String, Object> loginDetail(LoginRequest request, @Nullable CustomUserDetails account) {
-        // 미등록 아이디는 닉네임을 알 수 없으므로 입력한 아이디만 남긴다.
-        if (account == null) {
-            return Map.of("username", request.getUsername(), "keepLoggedIn", request.getKeepLoggedIn());
-        }
-
-        return Map.of("username", request.getUsername(), "nickname", account.getNickname(), "keepLoggedIn", request.getKeepLoggedIn());
     }
 
     // 비밀번호 인증 후 Redis 로그인 세션을 생성하고 토큰을 발급한다.
     private LoginResponse authenticateAndCreateSession(LoginRequest request, BrowserProof proof, LoginRateLimitAttempt loginAttempt) {
         Authentication authentication;
 
+        LoginAuditContext.step("PASSWORD_VERIFICATION");
         try {
             authentication = authenticate(request);
-        } catch (BadCredentialsException | AccountStatusException e) {
+        } catch (BadCredentialsException e) {
+            if (LoginAuditContext.current() != null) LoginAuditContext.current().mismatch(
+                    loginUserDetailsLookup.findByUsername(request.getUsername()).isPresent());
+            LoginAuditContext.exception(e);
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        } catch (AccountStatusException e) {
+            LoginAuditContext.reason("ACCOUNT_NOT_ACTIVE");
+            LoginAuditContext.exception(e);
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
         CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
+        LoginAuditContext.fact("credentialsVerified", true);
 
         // 인증 성공 시 계정 카운터를 초기화하고 해당 IP 예약을 반환한다. 실패하면 새 세션을 만들기 전에 중단한다.
+        LoginAuditContext.step("RATE_LIMIT_RESET");
         loginRateLimitService.onAuthenticationSuccess(loginAttempt);
 
         Instant now = Instant.now();
@@ -121,9 +117,11 @@ public class AuthService {
 
         boolean keepLoggedIn = request.getKeepLoggedIn();
 
+        LoginAuditContext.step("SESSION_EXPIRY");
         Instant expiresAt = sessionExpirationPolicy.calculateInitialExpiresAt(keepLoggedIn, now);
 
         // 세션 ID와 최초 세대(0)를 포함하는 서명된 Refresh Token 생성
+        LoginAuditContext.step("REFRESH_TOKEN_ISSUE");
         String refreshToken = jwtRefreshTokenService.create(sessionId, 0);
 
         // Redis 세션에는 Refresh Token 해시만 저장
@@ -139,12 +137,15 @@ public class AuthService {
                 .build();
 
         // 사용자 ID와 세션 ID가 포함된 Access Token 발급
+        LoginAuditContext.step("ACCESS_TOKEN_ISSUE");
         Jwt accessToken = jwtTokenService.createAccessToken(user.getId(), sessionId);
 
         // 비밀번호 인증에 성공한 뒤에만 기존 세션의 서명된 교체 증명을 검증한다.
+        LoginAuditContext.step("PREVIOUS_SESSION_CHECK");
         LoginSessionReplacement replacement = resolveReplacement(request);
         String resultContext = "login:" + user.getId() + ":" + keepLoggedIn + ":" + proof.getKeyThumbprint() + ":"
                 + (replacement == null ? sessionId : replacement.getSessionId() + ":" + replacement.getRefreshTokenHash());
+        LoginAuditContext.step("LOGIN_RESPONSE_BUILDING");
         LoginResponse candidate = createLoginResponse(accessToken, refreshToken, keepLoggedIn, expiresAt, proof.getKeyThumbprint());
 
         /*
@@ -154,10 +155,13 @@ public class AuthService {
          *
          * 차단·중복 확인, 교체 동의 확인, 기존 세션 교체, 세션 생성과 중복 결과 공유는 Lua Script에서 원자적으로 처리한다.
          */
+        LoginAuditContext.step("RESULT_ENCRYPTION");
+        String candidateResult = authResultCipher.encrypt(candidate, resultContext);
         String encryptedResult = accessAdmission.create(session, replacement,
-                authResultCipher.encrypt(candidate, resultContext), Boolean.TRUE.equals(request.getReplaceExistingSession()), user.getPassword());
+                candidateResult, Boolean.TRUE.equals(request.getReplaceExistingSession()), user.getPassword());
 
         // 동시 요청은 먼저 성공한 한 번의 결과를 받으며 각자 새 세션을 만들지 않는다.
+        LoginAuditContext.step("RESULT_DECRYPTION");
         return authResultCipher.decrypt(encryptedResult, resultContext, LoginResponse.class);
     }
 

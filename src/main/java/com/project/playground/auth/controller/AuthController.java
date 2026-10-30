@@ -46,6 +46,7 @@ public class AuthController {
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest,
                                               @RequestAttribute(BrowserProof.ATTRIBUTE) BrowserProof proof) {
         // 실제 연결 상대를 검증한 전용 판별기로 로그인 시도 제한에 사용할 IP를 결정한다.
+        com.project.playground.auth.audit.LoginAuditContext.step("CLIENT_IP");
         String clientIp = loginClientIpResolver.resolve(httpServletRequest);
 
         LoginResponse response = authService.login(request, clientIp, proof);

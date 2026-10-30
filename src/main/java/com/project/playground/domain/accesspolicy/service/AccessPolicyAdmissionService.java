@@ -34,13 +34,24 @@ public class AccessPolicyAdmissionService {
     @Transactional
     public String create(RedisSession session, @Nullable LoginSessionReplacement replacement, String encryptedResult, boolean replace,
                          String authenticatedPasswordHash) {
+        com.project.playground.auth.audit.LoginAuditContext.step("ACCOUNT_LOCK");
         roles.lockAuthorizationPolicyForAdmission().orElseThrow();
+        com.project.playground.auth.audit.LoginAuditContext.step("ACCOUNT_STATE_RECHECK");
         var user = users.findForShareById(session.getId())
                 .filter(value -> value.getStatus() == UserStatus.ACTIVE && value.getDeletedAt() == null)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+                .orElseThrow(() -> {
+                    com.project.playground.auth.audit.LoginAuditContext.reason("ACCOUNT_STATE_CHANGED");
+                    return new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+                });
         // 비밀번호 검증 뒤 변경 요청이 먼저 커밋했다면 이전 비밀번호로 새 세션을 발급하지 않는다.
-        if (!user.getPassword().equals(authenticatedPasswordHash)) throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        com.project.playground.auth.audit.LoginAuditContext.step("PASSWORD_STATE_RECHECK");
+        if (!user.getPassword().equals(authenticatedPasswordHash)) {
+            com.project.playground.auth.audit.LoginAuditContext.reason("PASSWORD_CHANGED_DURING_LOGIN");
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        }
+        com.project.playground.auth.audit.LoginAuditContext.step("ACCESS_POLICY_CHECK");
         var policy = policies.findById(1L).orElseThrow();
+        com.project.playground.auth.audit.LoginAuditContext.step("SESSION_CREATION");
         return sessions.create(session, replacement, encryptedResult, replace, user.getRoleCode(), policy.getVersion())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
     }

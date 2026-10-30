@@ -22,7 +22,8 @@ public class AdminLogDetailMapper {
         attribute(attributes, "입력 아이디", text(data.get("username"), "username", Map.of()));
         attribute(attributes, "활동 당시 닉네임", text(data.get("nickname"), "nickname", Map.of()));
         attribute(attributes, "로그인 유지", text(data.get("keepLoggedIn"), "keepLoggedIn", Map.of()));
-        return ActivityLogDetails.builder().entry(source.getEntry()).userAgent(source.getUserAgent()).attributes(List.copyOf(attributes)).build();
+        return ActivityLogDetails.builder().entry(source.getEntry()).userAgent(source.getUserAgent()).attributes(List.copyOf(attributes))
+                .loginDiagnostics("LOGIN".equals(source.getEntry().getType()) ? LoginLogDiagnosticsMapper.map(data) : null).build();
     }
     public AuditLogDetails audit(LogDetailSource<AuditLogSummary> source, Map<String, String> roleNames) {
         var data = read(source.getDetail());

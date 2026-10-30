@@ -63,28 +63,35 @@ public class BffClientFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
+        com.project.playground.auth.audit.LoginAuditContext.step("BFF_AUTHENTICATION");
         boolean accepted = false;
         try {
             if (required) {
+                com.project.playground.auth.audit.LoginAuditContext.reason("BFF_CERTIFICATE_MISSING");
                 Object certificates = request.getAttribute("jakarta.servlet.request.X509Certificate");
                 if (request.isSecure() && certificates instanceof X509Certificate[] values && values.length > 0) {
+                    com.project.playground.auth.audit.LoginAuditContext.reason("BFF_CERTIFICATE_VALIDATION_FAILED");
                     values[0].checkValidity();
                     String fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(values[0].getEncoded()));
                     accepted = fingerprints.contains(fingerprint);
+                    if (!accepted) com.project.playground.auth.audit.LoginAuditContext.reason("BFF_CERTIFICATE_REJECTED");
                 }
             } else if (devSecret != null) {
+                com.project.playground.auth.audit.LoginAuditContext.reason("BFF_DEV_SECRET_MISMATCH");
                 // Docker IP를 인증 수단으로 삼지 않는다. 지정 헤더 한 건만 상수 시간 비교하며 키를 로그에 남기지 않는다.
                 String provided = request.getHeader(DEV_HEADER);
                 accepted = provided != null && provided.length() == devSecret.length
                         && Collections.list(request.getHeaders(DEV_HEADER)).size() == 1
                         && MessageDigest.isEqual(devSecret, provided.getBytes(StandardCharsets.US_ASCII));
             } else {
+                com.project.playground.auth.audit.LoginAuditContext.reason("BFF_LOOPBACK_REQUIRED");
                 // 개발 예외도 실제 루프백 연결에만 허용하며 전달 헤더나 Host 값을 사용하지 않는다.
                 String remote = request.getRemoteAddr();
                 accepted = (remote.matches("[0-9.]+") || remote.contains(":")) && InetAddress.getByName(remote).isLoopbackAddress();
             }
-        } catch (Exception e) { /* 인증서·주소 파싱 실패는 원문 노출 없이 거절한다. */ }
+        } catch (Exception e) { com.project.playground.auth.audit.LoginAuditContext.exception(e); /* 원문은 기록하지 않는다. */ }
         if (!accepted) { errors.write(request, response, ErrorCode.BFF_AUTHENTICATION_REQUIRED); return; }
+        com.project.playground.auth.audit.LoginAuditContext.fact("bffVerified", true);
         chain.doFilter(request, response);
     }
 }

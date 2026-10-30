@@ -42,7 +42,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(GameUnavailableException.class)
     public ResponseEntity<ProblemDetail> gameUnavailable(GameUnavailableException exception) {
         ProblemDetail problem = ApiProblemFactory.create(ErrorCode.GAME_UNAVAILABLE);
-        problem.setDetail(exception.getNotice());
+        if (com.project.playground.auth.audit.LoginAuditContext.current() == null) problem.setDetail(exception.getNotice());
         return ResponseEntity.status(problem.getStatus()).cacheControl(CacheControl.noStore()).body(problem);
     }
 
@@ -50,7 +50,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessRestrictedException.class)
     public ResponseEntity<ProblemDetail> accessRestricted(AccessRestrictedException exception) {
         ProblemDetail problem = ApiProblemFactory.create(ErrorCode.ACCESS_RESTRICTED);
-        problem.setDetail(exception.getNotice());
+        if (com.project.playground.auth.audit.LoginAuditContext.current() == null) problem.setDetail(exception.getNotice());
         return ResponseEntity.status(problem.getStatus()).cacheControl(CacheControl.noStore()).body(problem);
     }
 
@@ -63,6 +63,8 @@ public class GlobalExceptionHandler {
     // DTO 필드 검증 실패
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail methodArgumentNotValidException(MethodArgumentNotValidException e) {
+        com.project.playground.auth.audit.LoginAuditContext.reason("INPUT_VALIDATION_FAILED");
+        com.project.playground.auth.audit.LoginAuditContext.exception(e);
         Map<String, String> errors = new LinkedHashMap<>();
 
         for (FieldError error : e.getFieldErrors()) {
@@ -72,7 +74,7 @@ public class GlobalExceptionHandler {
         }
 
         ProblemDetail problem = ApiProblemFactory.create(ErrorCode.VALIDATION_FAILED);
-        problem.setProperty("errors", errors);
+        if (com.project.playground.auth.audit.LoginAuditContext.current() == null) problem.setProperty("errors", errors);
 
         return problem;
     }
@@ -80,12 +82,15 @@ public class GlobalExceptionHandler {
     // JSON 형식 오류 또는 역직렬화 실패
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ProblemDetail handleMessageNotReadable(HttpMessageNotReadableException e) {
+        com.project.playground.auth.audit.LoginAuditContext.reason("INPUT_JSON_INVALID");
+        com.project.playground.auth.audit.LoginAuditContext.exception(e);
         return ApiProblemFactory.create(ErrorCode.INVALID_REQUEST_BODY);
     }
 
     // 비즈니스 규칙 위반
     @ExceptionHandler(BusinessException.class)
     public ProblemDetail businessException(BusinessException e) {
+        com.project.playground.auth.audit.LoginAuditContext.exception(e);
         ErrorCode errorCode = e.getErrorCode();
 
         return ApiProblemFactory.create(errorCode);
@@ -94,6 +99,7 @@ public class GlobalExceptionHandler {
     // 인증 서비스 오류와 DB·Redis 연결 실패·시간 초과는 인증 무효와 구분한다.
     @ExceptionHandler({AuthenticationServiceException.class, DataAccessResourceFailureException.class, TransientDataAccessException.class})
     public ResponseEntity<ProblemDetail> authenticationServiceUnavailable(Exception e) {
+        com.project.playground.auth.audit.LoginAuditContext.exception(e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .cacheControl(CacheControl.noStore())

@@ -14,6 +14,7 @@ RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon bootJar && cp 
 FROM eclipse-temurin:25-jre-noble AS runtime
 WORKDIR /app
 RUN groupadd --gid 10001 playground && useradd --uid 10001 --gid playground --no-create-home playground
+RUN mkdir -p /app/login-audit && chown 10001:10001 /app/login-audit
 COPY --from=builder --chown=10001:10001 /build/application.jar ./application.jar
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError"
 USER 10001:10001

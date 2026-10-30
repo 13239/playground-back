@@ -207,12 +207,18 @@ public class RedisSessionRepository {
          * REPLACED는 정상적인 경합으로 409를 반환하고 나머지 실패는 예상하지 못한 세션 생성 오류로 처리한다.
          * CONFIRMATION_REQUIRED도 409지만 새 로그인을 자동 재시도하지 않고 사용자 선택을 기다린다.
          */
+        com.project.playground.auth.audit.LoginAuditContext.fact("redisOutcome", result == null ? "MISSING"
+                : result.startsWith("v1.") ? "CREATED"
+                : java.util.Set.of("BLOCKED", "REPLACED", "CONFIRMATION_REQUIRED", "DUPLICATE", "EXPIRED",
+                        "ACCESS_RESTRICTED", "ACCESS_POLICY_UNAVAILABLE").contains(result) ? result : "UNEXPECTED_RESULT");
         if (result == null) {
+            com.project.playground.auth.audit.LoginAuditContext.reason("REDIS_RESULT_MISSING");
             throw new IllegalStateException("로그인 세션을 생성하지 못했습니다.");
         }
         accessPolicy.requireResult(result);
 
         if ("BLOCKED".equals(result)) {
+            com.project.playground.auth.audit.LoginAuditContext.reason("REDIS_ACCOUNT_BLOCKED");
             return Optional.empty();
         }
 
@@ -225,6 +231,7 @@ public class RedisSessionRepository {
         }
 
         if ("DUPLICATE".equals(result) || "EXPIRED".equals(result)) {
+            com.project.playground.auth.audit.LoginAuditContext.reason("REDIS_SESSION_" + result);
             throw new IllegalStateException("로그인 세션을 생성하지 못했습니다.");
         }
 
