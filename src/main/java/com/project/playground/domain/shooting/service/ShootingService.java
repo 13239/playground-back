@@ -62,6 +62,11 @@ public class ShootingService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST_BODY);
         rate(session.getId(), "ticket", 20);
         availability.requireNewPlay("SHOOTING", request.getMode());
+        String mapId = ShootingStageRules.requireMap(request.getMapId() == null ? "CAVE" : request.getMapId());
+        var progress = progress(session.getId());
+        if (request.getInvitedRoomCode() == null &&
+                (progress.getUnlockedMaps() & (1 << ShootingStageRules.MAPS.indexOf(mapId))) == 0)
+            throw new BusinessException(ErrorCode.INVALID_REQUEST_BODY);
         var user =
                 users.findActiveById(session.getId())
                         .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_SESSION));
@@ -70,6 +75,8 @@ public class ShootingService {
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         var identity =
                 ShootingResponse.Identity.builder()
+                        .mapId(mapId)
+                        .unlockedMaps(progress.getUnlockedMaps())
                         .userId(session.getId())
                         .sessionId(session.getSessionId().toString())
                         .browserKey(session.getBrowserKeyThumbprint())
@@ -133,26 +140,34 @@ public class ShootingService {
         sessions.findBySessionId(UUID.fromString(request.getSessionId()), request.getUserId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_SESSION));
         String id = request.getRunId() + "-" + request.getUserId();
-        records.ensure(id, request.getRunId(), request.getUserId(), request.getMode());
-        var record = records.lock(id).orElseThrow();
-        if (!record.getMode().equals(request.getMode()))
+        String mapId = ShootingStageRules.requireMap(request.getMapId());
+        if (request.getRuleVersion() != ShootingStageRules.VERSION ||
+                (request.isCompleted() && (!request.isFinished() || request.getClearedStage() != 10 || request.getCombatMillis() <= 0)))
             throw new BusinessException(ErrorCode.SHOOTING_RECORD_INVALID);
+        records.ensure(id, request.getRunId(), request.getUserId(), request.getMode(), mapId);
+        var record = records.lock(id).orElseThrow();
+        if (!record.getMode().equals(request.getMode()) || !record.getMapId().equals(mapId) || record.getRuleVersion() != ShootingStageRules.VERSION)
+            throw new BusinessException(ErrorCode.SHOOTING_RECORD_INVALID);
+        boolean previouslyFinished = record.isFinished();
         record.checkpoint(
                 request.getClearedStage(),
                 request.getCombatMillis(),
                 request.getTeammate(),
                 request.isFinished());
+        if (request.isCompleted() && !previouslyFinished)
+            record.complete(ShootingStageRules.stars(mapId, request.getCombatMillis()));
     }
 
     @Transactional(readOnly = true)
     public ShootingResponse.Overview overview(Long userId, ShootingRequest.Overview request) {
         rate(userId, "ranking", 90);
         String mode = request.getMode();
-        int pages = Math.max(1, (int) Math.ceilDiv(Math.min(100, records.rankedCount(mode)), 10));
+        String mapId = ShootingStageRules.requireMap(request.getMapId());
+        int pages = Math.max(1, (int) Math.ceilDiv(Math.min(100, records.rankedCount(mode, mapId)), 10));
         int page = Math.clamp(request.getPage(), 1, pages), offset = (page - 1) * 10;
-        var rows = records.ranking(mode, offset);
+        var rows = records.ranking(mode, mapId, offset);
         var own =
-                records.findFirstByUserIdAndModeOrderByStageDescCombatMillisAsc(userId, mode)
+                records.findFirstByUserIdAndModeAndMapIdAndRuleVersionOrderByStageDescCombatMillisAsc(userId, mode, mapId, ShootingStageRules.VERSION)
                         .orElse(null);
         var ranking =
                 IntStream.range(0, rows.size())
@@ -160,6 +175,7 @@ public class ShootingService {
                                 index -> {
                                     var row = rows.get(index);
                                     return ShootingResponse.Ranking.builder()
+                                            .stars(row.getStars())
                                             .rank(offset + index + 1)
                                             .nickname(row.getNickname())
                                             .teammate(row.getTeammate())
@@ -170,6 +186,7 @@ public class ShootingService {
                                 })
                         .toList();
         return ShootingResponse.Overview.builder()
+                .mapId(mapId)
                 .mode(mode)
                 .page(page)
                 .totalPages(pages)
@@ -177,6 +194,56 @@ public class ShootingService {
                 .bestMillis(own == null ? 0 : own.getCombatMillis())
                 .rankings(ranking)
                 .build();
+    }
+
+    /** 어느 한 모드에서 1성만 얻어도 다음 맵을 연다. 동일 맵의 별은 큰 값 하나만 더한다. */
+    @Transactional(readOnly = true)
+    public ShootingResponse.Progress progress(Long userId) {
+        var rows = records.progress(userId);
+        var result = new ArrayList<ShootingResponse.MapProgress>();
+        int total = 0, unlocked = 1;
+        for (int index = 0; index < ShootingStageRules.MAPS.size(); index++) {
+            String mapId = ShootingStageRules.MAPS.get(index);
+            var single = rows.stream()
+                    .filter(row -> mapId.equals(row.getMapId()) && "SINGLE".equals(row.getMode()))
+                    .findFirst().orElse(null);
+            var coop = rows.stream()
+                    .filter(row -> mapId.equals(row.getMapId()) && "COOP".equals(row.getMode()))
+                    .findFirst().orElse(null);
+            int singleStars = single == null ? 0 : single.getStars();
+            int coopStars = coop == null ? 0 : coop.getStars();
+            int best = Math.max(singleStars, coopStars);
+            boolean open = (unlocked & (1 << index)) != 0;
+            result.add(ShootingResponse.MapProgress.builder()
+                    .mapId(mapId)
+                    .unlocked(open)
+                    .stars(best)
+                    .singleStars(singleStars)
+                    .coopStars(coopStars)
+                    .singleMillis(single == null ? 0 : single.getBestMillis())
+                    .coopMillis(coop == null ? 0 : coop.getBestMillis())
+                    .build());
+            total += best;
+            if (best > 0 && index < 2) unlocked |= 1 << (index + 1);
+        }
+        return ShootingResponse.Progress.builder()
+                .totalStars(total)
+                .unlockedMaps(unlocked)
+                .maps(result)
+                .build();
+    }
+
+    /** 브라우저의 반복 조회만 제한하고 티켓·내부 재도전의 권한 조회와 한도를 공유하지 않는다. */
+    @Transactional(readOnly = true)
+    public ShootingResponse.Progress publicProgress(Long userId) {
+        rate(userId, "progress", 90);
+        return progress(userId);
+    }
+
+    /** 재도전·다음 맵 출격 직전 실제 세션과 저장된 진행을 다시 확인한다. */
+    public ShootingResponse.Progress internalProgress(ShootingRequest.Lease request) {
+        validateLease(request);
+        return progress(request.getUserId());
     }
 
     private void validate(Long userId, String sessionId, String thumbprint) {

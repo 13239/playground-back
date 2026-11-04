@@ -24,6 +24,13 @@ public class ShootingController {
     private final ShootingLobbyService lobby;
     private final ShootingLobbyEvents events;
 
+    /** 계정별 별·맵 해금만 반환하며 클라이언트 점수 입력은 받지 않는다. */
+    @PostMapping("/progress")
+    public ResponseEntity<ShootingResponse.Progress> progress(
+            @AuthenticationPrincipal(errorOnInvalidType = true) Session session) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(shooting.publicProgress(session.getId()));
+    }
+
     /** 목록의 데이터 대신 변경 신호만 보내고 조회 시 기존 세션·친구 필터를 다시 확인한다. */
     @PostMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@AuthenticationPrincipal(errorOnInvalidType = true) Session session) {

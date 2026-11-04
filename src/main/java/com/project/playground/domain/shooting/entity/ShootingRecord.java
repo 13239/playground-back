@@ -4,6 +4,8 @@ import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import lombok.*;
 
@@ -27,6 +29,20 @@ public class ShootingRecord {
 
     @Column(nullable = false, length = 10)
     private String mode;
+
+    @Column(name = "map_id", nullable = false, length = 16)
+    private String mapId;
+
+    @Column(name = "rule_version", nullable = false)
+    private int ruleVersion;
+
+    // DB의 0~3 별 TINYINT와 Java 정수 DTO의 변환을 명시해 스키마 검증도 일치시킨다.
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    @Column(nullable = false)
+    private int stars;
+
+    @Column(nullable = false)
+    private boolean completed;
 
     @Column(nullable = false)
     private int stage;
@@ -59,5 +75,13 @@ public class ShootingRecord {
         }
         this.teammate = teammate;
         if (finish) finished = true;
+    }
+
+    /** 별은 신뢰된 최종 클리어에서만 확정한다. 실패·퇴장 기록으로 완주를 만들지 않는다. */
+    public void complete(int awardedStars) {
+        if (stage != 10 || combatMillis <= 0 || awardedStars < 1 || awardedStars > 3)
+            throw new BusinessException(ErrorCode.SHOOTING_RECORD_INVALID);
+        stars = awardedStars;
+        completed = true;
     }
 }

@@ -22,6 +22,8 @@ public final class ShootingResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Identity {
+        private String mapId;
+        private int unlockedMaps;
         private Long userId;
         private String sessionId;
         private String browserKey;
@@ -37,6 +39,7 @@ public final class ShootingResponse {
     @Getter
     @Builder
     public static class Ranking {
+        private final int stars;
         private final long rank;
         private final String nickname;
         private final String teammate;
@@ -48,11 +51,33 @@ public final class ShootingResponse {
     @Getter
     @Builder
     public static class Overview {
+        private final String mapId;
         private final String mode;
         private final int page;
         private final int totalPages;
         private final int bestStage;
         private final long bestMillis;
         private final List<Ranking> rankings;
+    }
+
+    /** 맵별 두 모드 기록과 해금용 최고 별만 공개하며 전체 도전 이력은 보내지 않는다. */
+    @Getter
+    @Builder
+    public static class MapProgress {
+        private final String mapId;
+        private final boolean unlocked;
+        private final int stars;
+        private final int singleStars;
+        private final int coopStars;
+        private final long singleMillis;
+        private final long coopMillis;
+    }
+
+    @Getter
+    @Builder
+    public static class Progress {
+        private final int totalStars;
+        private final int unlockedMaps;
+        private final List<MapProgress> maps;
     }
 }

@@ -19,6 +19,12 @@ public class ShootingInternalController {
     private final ShootingService shooting;
     private final ShootingLobbyService lobby;
 
+    /** 방장만 해금한 맵으로 팀원을 데려가는 것을 막기 위해 각자의 진행을 검증한다. */
+    @PostMapping("/progress")
+    public ShootingResponse.Progress progress(@Valid @RequestBody ShootingRequest.Lease request) {
+        return shooting.internalProgress(request);
+    }
+
     /** 이미 연결된 게임 서버도 새로운 도전 직전에 운영 정책을 다시 확인한다. */
     @PostMapping("/restart")
     public ResponseEntity<Void> restart(@Valid @RequestBody ShootingRequest.Ticket request) {

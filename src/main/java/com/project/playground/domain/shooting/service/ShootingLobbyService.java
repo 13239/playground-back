@@ -43,6 +43,7 @@ public class ShootingLobbyService implements GameInvitationAdapter {
         """,Long.class);
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Update {
+        @NotBlank @Pattern(regexp="CAVE|FACTORY|GARDEN") private String mapId;
         @NotNull @Positive private Long userId;
         @NotBlank @Pattern(regexp="[0-9a-f-]{36}") private String sessionId;
         @NotBlank @Pattern(regexp="[A-Z2-9]{8}") private String roomId;
@@ -53,12 +54,14 @@ public class ShootingLobbyService implements GameInvitationAdapter {
     }
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Stored {
+        private String mapId;
         private Long hostId;
         private String sessionId, roomId, runId, hostPublicId, nickname, avatar, title;
         private boolean privateRoom;
     }
     @Getter @Builder
     public static class Room {
+        private final String mapId;
         private final String id, title, hostPublicId, nickname, avatar;
         private final boolean friend;
         private final boolean privateRoom;
@@ -66,6 +69,7 @@ public class ShootingLobbyService implements GameInvitationAdapter {
     }
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Query {
+        @NotBlank @Pattern(regexp="CAVE|FACTORY|GARDEN") private String mapId;
         @Min(1) @Max(10000) private int page;
         @NotNull @Size(max=50) private String search;
         private boolean friendsOnly;
@@ -77,7 +81,7 @@ public class ShootingLobbyService implements GameInvitationAdapter {
     }
     public void publish(Update request){
         var user=users.findById(request.userId).orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
-        var value=Stored.builder().hostId(request.userId).sessionId(request.sessionId).roomId(request.roomId).runId(request.runId)
+        var value=Stored.builder().mapId(request.mapId).hostId(request.userId).sessionId(request.sessionId).roomId(request.roomId).runId(request.runId)
             .hostPublicId(user.getPublicId()).nickname(user.getNickname()).avatar(user.getProfileAvatar().name())
             .title(request.title).privateRoom(request.privateRoom).build();
         // 원자 갱신 안에서 실제 표시 내용이 바뀐 경우에만 알린다. 하트비트는 조회 폭주를 만들지 않는다.
@@ -101,10 +105,11 @@ public class ShootingLobbyService implements GameInvitationAdapter {
         var rooms=new ArrayList<Room>();
         for(int index=0;index<stored.size();index++){
             var s=stored.get(index);
+            if(!query.mapId.equals(s.mapId))continue;
             if(leases==null||!Objects.equals(leases.get(index),s.roomId+":"+s.sessionId))continue;
             String title=title(s);if(!title.toLowerCase(Locale.ROOT).contains(search)&&!s.nickname.toLowerCase(Locale.ROOT).contains(search))continue;
             boolean friend=friendIds.contains(s.hostId);if(query.friendsOnly&&!friend)continue;
-            rooms.add(Room.builder().id(s.roomId).title(title).hostPublicId(s.hostPublicId).nickname(s.nickname).avatar(s.avatar).friend(friend).privateRoom(s.privateRoom).players(1).build());
+            rooms.add(Room.builder().mapId(s.mapId).id(s.roomId).title(title).hostPublicId(s.hostPublicId).nickname(s.nickname).avatar(s.avatar).friend(friend).privateRoom(s.privateRoom).players(1).build());
         }
         rooms.sort(Comparator.comparing(Room::isFriend).reversed().thenComparing(Room::getTitle).thenComparing(Room::getId));
         int pages=Math.max(1,Math.ceilDiv(rooms.size(),4)),page=Math.clamp(query.page,1,pages),start=(page-1)*4;

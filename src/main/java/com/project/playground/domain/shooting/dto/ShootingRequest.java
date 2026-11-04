@@ -13,6 +13,9 @@ public final class ShootingRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Overview {
+        @Builder.Default
+        @Pattern(regexp = "CAVE|FACTORY|GARDEN")
+        private String mapId = "CAVE";
         @NotBlank
         @Pattern(regexp = "SINGLE|COOP")
         private String mode;
@@ -27,6 +30,9 @@ public final class ShootingRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Ticket {
+        // 생성할 맵은 인증 티켓에 묶는다. 참가 시 실제 방의 맵 해금도 게임 서버에서 확인한다.
+        @Pattern(regexp = "CAVE|FACTORY|GARDEN")
+        private String mapId;
         @NotBlank
         @Pattern(regexp = "SINGLE|COOP")
         private String mode;
@@ -71,6 +77,13 @@ public final class ShootingRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Checkpoint {
+        @NotBlank @Pattern(regexp = "CAVE|FACTORY|GARDEN")
+        private String mapId;
+
+        @Min(3) @Max(3)
+        private int ruleVersion;
+
+        private boolean completed;
         @NotBlank
         @Pattern(regexp = "[0-9a-f-]{36}")
         private String runId;
@@ -85,7 +98,7 @@ public final class ShootingRequest {
         @Pattern(regexp = "SINGLE|COOP")
         private String mode;
 
-        @Min(0)
+        @Min(0) @Max(10)
         private int clearedStage;
 
         @Min(0)
