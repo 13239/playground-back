@@ -144,7 +144,7 @@ public class ShootingService {
         if (request.getRuleVersion() != ShootingStageRules.VERSION ||
                 (request.isCompleted() && (!request.isFinished() || request.getClearedStage() != 10 || request.getCombatMillis() <= 0)))
             throw new BusinessException(ErrorCode.SHOOTING_RECORD_INVALID);
-        records.ensure(id, request.getRunId(), request.getUserId(), request.getMode(), mapId);
+        records.ensure(id, request.getRunId(), request.getUserId(), request.getMode(), mapId, ShootingStageRules.VERSION);
         var record = records.lock(id).orElseThrow();
         if (!record.getMode().equals(request.getMode()) || !record.getMapId().equals(mapId) || record.getRuleVersion() != ShootingStageRules.VERSION)
             throw new BusinessException(ErrorCode.SHOOTING_RECORD_INVALID);
@@ -163,11 +163,12 @@ public class ShootingService {
         rate(userId, "ranking", 90);
         String mode = request.getMode();
         String mapId = ShootingStageRules.requireMap(request.getMapId());
-        int pages = Math.max(1, (int) Math.ceilDiv(Math.min(100, records.rankedCount(mode, mapId)), 10));
+        // 이전의 쉬운 전투와 경쟁하지 않도록 랭킹과 현재 최고 시간만 버전 5로 분리한다.
+        int pages = Math.max(1, (int) Math.ceilDiv(Math.min(100, records.rankedCount(mode, mapId, ShootingStageRules.RANKING_VERSIONS)), 10));
         int page = Math.clamp(request.getPage(), 1, pages), offset = (page - 1) * 10;
-        var rows = records.ranking(mode, mapId, offset);
+        var rows = records.ranking(mode, mapId, offset, ShootingStageRules.RANKING_VERSIONS);
         var own =
-                records.findFirstByUserIdAndModeAndMapIdAndRuleVersionOrderByStageDescCombatMillisAsc(userId, mode, mapId, ShootingStageRules.VERSION)
+                records.findFirstByUserIdAndModeAndMapIdAndRuleVersionInOrderByStageDescCombatMillisAsc(userId, mode, mapId, ShootingStageRules.RANKING_VERSIONS)
                         .orElse(null);
         var ranking =
                 IntStream.range(0, rows.size())
@@ -199,7 +200,8 @@ public class ShootingService {
     /** 어느 한 모드에서 1성만 얻어도 다음 맵을 연다. 동일 맵의 별은 큰 값 하나만 더한다. */
     @Transactional(readOnly = true)
     public ShootingResponse.Progress progress(Long userId) {
-        var rows = records.progress(userId);
+        var rows = records.progress(userId, ShootingStageRules.COMPATIBLE_VERSIONS);
+        var currentRows = records.progress(userId, ShootingStageRules.RANKING_VERSIONS);
         var result = new ArrayList<ShootingResponse.MapProgress>();
         int total = 0, unlocked = 1;
         for (int index = 0; index < ShootingStageRules.MAPS.size(); index++) {
@@ -213,6 +215,11 @@ public class ShootingService {
             int singleStars = single == null ? 0 : single.getStars();
             int coopStars = coop == null ? 0 : coop.getStars();
             int best = Math.max(singleStars, coopStars);
+            // 별은 누적 보존하되 출격 화면에서 비교하는 시간은 현재 난이도의 완주만 사용한다.
+            long singleMillis = currentRows.stream().filter(row -> mapId.equals(row.getMapId()) && "SINGLE".equals(row.getMode()))
+                    .mapToLong(ShootingRecordRepository.ProgressRow::getBestMillis).findFirst().orElse(0);
+            long coopMillis = currentRows.stream().filter(row -> mapId.equals(row.getMapId()) && "COOP".equals(row.getMode()))
+                    .mapToLong(ShootingRecordRepository.ProgressRow::getBestMillis).findFirst().orElse(0);
             boolean open = (unlocked & (1 << index)) != 0;
             result.add(ShootingResponse.MapProgress.builder()
                     .mapId(mapId)
@@ -220,11 +227,12 @@ public class ShootingService {
                     .stars(best)
                     .singleStars(singleStars)
                     .coopStars(coopStars)
-                    .singleMillis(single == null ? 0 : single.getBestMillis())
-                    .coopMillis(coop == null ? 0 : coop.getBestMillis())
+                    .singleMillis(singleMillis)
+                    .coopMillis(coopMillis)
                     .build());
             total += best;
-            if (best > 0 && index < 2) unlocked |= 1 << (index + 1);
+            // 맵을 추가해도 기존 별 기록으로 다음 맵이 자연스럽게 열리도록 목록 길이를 사용한다.
+            if (best > 0 && index + 1 < ShootingStageRules.MAPS.size()) unlocked |= 1 << (index + 1);
         }
         return ShootingResponse.Progress.builder()
                 .totalStars(total)

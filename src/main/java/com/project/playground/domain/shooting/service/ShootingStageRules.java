@@ -4,10 +4,13 @@ import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import java.util.List;
 
-/** 버전 3 별 기준. 게임 서버 공유 규칙과 함께 검증하고 밸런스 변경 시 버전을 분리한다. */
+/** 버전 5 패턴 공략 전투. 과거 별·해금은 보존하고 랭킹·최고 시간은 현재 난이도로 분리한다. */
 public final class ShootingStageRules {
-    public static final int VERSION = 3;
-    public static final List<String> MAPS = List.of("CAVE", "FACTORY", "GARDEN");
+    public static final int VERSION = 5;
+    public static final List<Integer> COMPATIBLE_VERSIONS = List.of(3, 4, VERSION);
+    public static final List<Integer> RANKING_VERSIONS = List.of(VERSION);
+    public static final String MAP_PATTERN = "CAVE|FACTORY|GARDEN|DESERT|ICE|VOLCANO";
+    public static final List<String> MAPS = List.of("CAVE", "FACTORY", "GARDEN", "DESERT", "ICE", "VOLCANO");
     private ShootingStageRules() {}
 
     public static String requireMap(String value) {
@@ -20,12 +23,18 @@ public final class ShootingStageRules {
         long three = switch (requireMap(map)) {
             case "CAVE" -> 360_000L;
             case "FACTORY" -> 400_000L;
-            default -> 440_000L;
+            case "GARDEN" -> 440_000L;
+            case "DESERT" -> 480_000L;
+            case "ICE" -> 520_000L;
+            default -> 560_000L;
         };
         long two = switch (map) {
             case "CAVE" -> 480_000L;
             case "FACTORY" -> 540_000L;
-            default -> 600_000L;
+            case "GARDEN" -> 600_000L;
+            case "DESERT" -> 660_000L;
+            case "ICE" -> 720_000L;
+            default -> 780_000L;
         };
         return millis <= three ? 3 : millis <= two ? 2 : 1;
     }

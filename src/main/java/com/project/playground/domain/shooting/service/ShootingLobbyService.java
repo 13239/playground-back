@@ -43,7 +43,8 @@ public class ShootingLobbyService implements GameInvitationAdapter {
         """,Long.class);
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Update {
-        @NotBlank @Pattern(regexp="CAVE|FACTORY|GARDEN") private String mapId;
+        // 신규 맵도 인증·기록과 같은 허용 목록으로 대기실에 등록한다.
+        @NotBlank @Pattern(regexp=ShootingStageRules.MAP_PATTERN) private String mapId;
         @NotNull @Positive private Long userId;
         @NotBlank @Pattern(regexp="[0-9a-f-]{36}") private String sessionId;
         @NotBlank @Pattern(regexp="[A-Z2-9]{8}") private String roomId;
@@ -69,7 +70,7 @@ public class ShootingLobbyService implements GameInvitationAdapter {
     }
     @Getter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Query {
-        @NotBlank @Pattern(regexp="CAVE|FACTORY|GARDEN") private String mapId;
+        @NotBlank @Pattern(regexp=ShootingStageRules.MAP_PATTERN) private String mapId;
         @Min(1) @Max(10000) private int page;
         @NotNull @Size(max=50) private String search;
         private boolean friendsOnly;
