@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
-/** 현재 DB 권한과 동일한 행 잠금·버전·동기 감사 기록을 사용한다. 관리자 닉네임 수정/삭제/탈퇴 복구는 제공하지 않는다. */
+/** 현재 DB 권한과 동일한 행 잠금·버전·동기 감사 기록으로 탈퇴 회원의 상태 변경도 처리한다. 관리자 닉네임 수정/삭제는 제공하지 않는다. */
 @Service @RequiredArgsConstructor @Transactional(readOnly = true)
 public class AdminUserService {
     private final AdminAuthorizationService authorization;
@@ -79,7 +79,7 @@ public class AdminUserService {
         // 본인의 비활성화·탈퇴는 세션을 차단하기 전에 거절한다.
         if (actorId.equals(targetId) && !request.getStatus().equals("ACTIVE")) throw new BusinessException(ErrorCode.USER_SELF_OPERATION_NOT_ALLOWED);
         String before = user.getStatus().name();
-        // 기존 재활성화의 커밋 이후 조건부 Redis 해제와 실패 시 차단 유지 정책을 그대로 재사용한다.
+        // 탈퇴 회원도 활성·비활성 전환을 허용하며 기존 재활성화의 커밋 이후 조건부 Redis 해제와 실패 시 차단 유지 정책을 재사용한다.
         switch (request.getStatus()) {
             case "ACTIVE" -> accounts.activate(targetId);
             case "INACTIVE" -> accounts.deactivate(targetId);
@@ -95,6 +95,8 @@ public class AdminUserService {
     public void revokeSessions(Long actorId, Long targetId, AdminUserActionRequest request) {
         var actor = requireWrite(actorId, PermissionCode.USER_SESSION_REVOKE);
         var user = locked(targetId);
+        // 탈퇴 회원에게 새로 허용하는 작업은 상태 변경뿐이며 별도 세션 관리 제한은 유지한다.
+        if (user.getStatus() == UserStatus.WITHDRAWN) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         requireVersion(user.getManagementVersion(), request.getExpectedVersion());
         // 일반 관리자가 최고 관리자의 세션을 종료하지 못하게 하고, ROOT 본인의 종료는 허용한다.
         if (!actor.isSuperAdmin()) user.assertNotSuperAdmin();
@@ -107,8 +109,8 @@ public class AdminUserService {
         authorization.require(actorId, PermissionCode.USER_READ);
         return authorization.require(actorId, permission);
     }
-    // 탈퇴·삭제 회원의 관리 변경을 거절해 일반 상태 변경으로 복구하지 않는다.
-    private User locked(Long id) { return users.findForUpdateById(id).filter(u -> u.getDeletedAt() == null && u.getStatus() != UserStatus.WITHDRAWN).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND)); }
+    // 탈퇴 회원의 상태 변경에도 동일한 행 잠금을 사용하되 삭제된 계정은 관리 대상에서 제외한다.
+    private User locked(Long id) { return users.findForUpdateById(id).filter(u -> u.getDeletedAt() == null).orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND)); }
     private static void requireVersion(long actual, long expected) { if (actual != expected) throw new BusinessException(ErrorCode.USER_MANAGEMENT_CHANGED); }
     /** 화면에서 지원하는 페이지 크기만 허용해 임의의 대량 조회를 방지한다. */
     private static void validatePage(int page, int size) {

@@ -99,7 +99,7 @@ public class UserService {
     }
 
     /**
-     * 회원 비활성화: 현재 로그인한 모든 기기의 세션을 즉시 무효화한다.
+     * 회원 비활성화: 탈퇴 회원도 비활성으로 전환하며 현재 로그인한 모든 기기의 세션을 즉시 무효화한다.
      * <p>
      * 동일 회원의 계정 변경은 DB 행 잠금으로 직렬화한다.
      * Redis 차단 및 세션 폐기를 DB 변경보다 먼저 수행하여 진행 중인 로그인 요청이 신규 세션을 만들 수 없게 한다.
@@ -111,8 +111,8 @@ public class UserService {
     public void deactivate(Long userId) {
         User user = findForUpdate(userId);
 
-        // 탈퇴를 일반 비활성 상태로 덮어써 재활성화할 수 있는 계정으로 되돌리지 않는다.
-        if (user.getDeletedAt() != null || user.getStatus() == UserStatus.WITHDRAWN) {
+        // 탈퇴 회원의 비활성 전환은 허용하되 삭제된 계정은 상태 변경으로 복구하지 않는다.
+        if (user.getDeletedAt() != null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
@@ -155,8 +155,8 @@ public class UserService {
     }
 
     /**
-     * 비활성 또는 가입대기 계정을 재활성화한다.
-     * 탈퇴 또는 삭제된 계정은 이 메서드로 복구할 수 없다.
+     * 비활성·가입대기·탈퇴 계정을 활성화한다.
+     * 탈퇴 복구에도 기존 세션 폐기와 커밋 이후 차단 해제를 적용하며 삭제된 계정은 복구하지 않는다.
      * <p>
      * 1. 회원 행에 쓰기 잠금을 건다.
      * 2. Redis에 남은 세션을 다시 폐기하고 이번 상태 변경의 차단 표식을 저장한다.
@@ -173,7 +173,8 @@ public class UserService {
     public void activate(Long userId) {
         User user = findForUpdate(userId);
 
-        if (user.getDeletedAt() != null || user.getStatus() == UserStatus.WITHDRAWN) {
+        // 탈퇴 상태 자체는 복구를 막지 않으며 삭제 여부만 별도로 검사한다.
+        if (user.getDeletedAt() != null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
