@@ -4,10 +4,10 @@ import com.project.playground.global.exception.BusinessException;
 import com.project.playground.global.exception.ErrorCode;
 import java.util.List;
 
-/** 버전 5 패턴 공략 전투. 과거 별·해금은 보존하고 랭킹·최고 시간은 현재 난이도로 분리한다. */
+/** 버전 6 맵별 공략 전투. 과거 별·해금은 보존하고 랭킹·최고 시간은 현재 난이도로 분리한다. */
 public final class ShootingStageRules {
-    public static final int VERSION = 5;
-    public static final List<Integer> COMPATIBLE_VERSIONS = List.of(3, 4, VERSION);
+    public static final int VERSION = 6;
+    public static final List<Integer> COMPATIBLE_VERSIONS = List.of(3, 4, 5, VERSION);
     public static final List<Integer> RANKING_VERSIONS = List.of(VERSION);
     public static final String MAP_PATTERN = "CAVE|FACTORY|GARDEN|DESERT|ICE|VOLCANO";
     public static final List<String> MAPS = List.of("CAVE", "FACTORY", "GARDEN", "DESERT", "ICE", "VOLCANO");
